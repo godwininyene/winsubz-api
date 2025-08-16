@@ -1,0 +1,30 @@
+{
+  "name": "vico-exchange-api",
+  "version": "1.0.0",
+  "description": "This api will be use to power digital assets(crypto and giftcard) selling platform",
+  "main": "app.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "createDB": "npx sequelize-cli db:create",
+    "migrate:up": "npx sequelize-cli db:migrate",
+    "seed": "npx sequelize-cli db:seed:all"
+  },
+  "author": "Godwin Inyene",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "express-xss-sanitizer": "^2.0.0",
+    "helmet": "^8.1.0",
+    "hpp": "^0.2.3",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "mysql2": "^3.14.3",
+    "nodemon": "^3.1.10",
+    "sequelize": "^6.37.7"
+  }
+}

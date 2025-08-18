@@ -45,3 +45,28 @@ exports.getCoin = catchAsync(async(req, res, next)=>{
         }
     })
 });
+exports.editCoin = catchAsync(async(req, res, next)=>{
+    const coin = await Coin.findByPk(req.params.id);
+    if(!coin){
+        return next(new AppError("No coin was found with that ID", " ", 404))
+    }
+
+    // Handle file
+    if (req.file) {
+        //1. Delete old image if exists
+        if (coin.coinImage) {
+            deleteFile(coin.coinImage, "coins");
+        }
+        // 2. Save new image
+        req.body.coinImage = `${process.env.APP_URL}/img/coins/${req.file.filename}`;
+    }
+
+    await coin.update(req.body, { validate: true });
+
+    res.status(200).json({
+        status: "success",
+        data: {
+            coin,
+        },
+    });
+})

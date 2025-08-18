@@ -3,6 +3,7 @@ const router = express.Router();
 const authController = require('./../controllers/authController');
 const coinController = require('./../controllers/coinController');
 const{uploadCoin} = require('./../utils/multerConfig');
+const { UPDLOCK } = require('sequelize/lib/table-hints');
 
 router.route('/')
     .post(
@@ -21,5 +22,12 @@ router.route('/:id')
         authController.protect,
         coinController.getCoin
     )
+    .patch(
+        authController.protect,
+        authController.restrictTo('admin'),
+        uploadCoin,
+        coinController.editCoin
+    )
+    
 
 module.exports = router;

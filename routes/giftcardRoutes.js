@@ -11,6 +11,9 @@ router.route('/')
         uploadGiftcard,
         giftcardController.createGiftcard
     )
-
+    .get(
+        authController.protect,
+        giftcardController.getAllGiftCards
+    )
 
 module.exports = router;

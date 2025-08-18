@@ -16,4 +16,16 @@ router.route('/')
         giftcardController.getAllGiftCards
     )
 
+router.route('/:id')
+    .get(
+        authController.protect,
+        giftcardController.getGiftcard
+    )
+    .patch(
+        authController.protect,
+        authController.restrictTo('admin'),
+        uploadGiftcard,
+        giftcardController.editGiftcard
+    )
+
 module.exports = router;

@@ -43,7 +43,13 @@ module.exports = (sequelize, DataTypes) => {
     },
     status:{
       type:DataTypes.ENUM('active', 'inactive'),
-      defaultValue:'active'
+      defaultValue:'active',
+      validate:{
+        isIn:{
+          args:[["active", "inactive"]],
+          msg:"Status must be either active or inactive"
+        }
+      }
     },
   }, {
     sequelize,

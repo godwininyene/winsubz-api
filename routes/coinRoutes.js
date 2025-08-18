@@ -28,6 +28,12 @@ router.route('/:id')
         uploadCoin,
         coinController.editCoin
     )
+    .delete(
+        authController.protect,
+        authController.restrictTo('admin'),
+        uploadCoin,
+        coinController.deleteCoin
+    )
     
 
 module.exports = router;

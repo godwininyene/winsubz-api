@@ -69,4 +69,22 @@ exports.editCoin = catchAsync(async(req, res, next)=>{
             coin,
         },
     });
+});
+
+exports.deleteCoin = catchAsync(async(req, res, next)=>{
+    const coin = await Coin.findByPk(req.params.id);
+
+    if(!coin){
+        return next(new AppError("No coin was found with that ID", " ", 404))
+    }
+    //Delete coin image if it exist
+    if(coin.coinImage){
+        deleteFile(coin.coinImage, 'coins')
+    }
+    await coin.destroy();
+
+    res.status(204).json({
+        status:"success",
+        data:null
+    })
 })

@@ -7,7 +7,10 @@ const { xss } = require('express-xss-sanitizer');
 const hpp = require('hpp');
 const cors = require('cors');
 const globalErrorController = require('./controllers/errorController')
+//routers
 const userRouter = require('./routes/userRoutes');
+const giftcardRouter = require('./routes/giftcardRoutes')
+
 const AppError = require('./utils/appError');
 
 const app = express();
@@ -46,6 +49,7 @@ app.options(/.*/, cors({
 
 // Routes
 app.use('/api/v1/users', userRouter);
+app.use('/api/v1/giftcards', giftcardRouter);
 
 //Not found route
 app.all(/.*/, (req, res, next)=>{

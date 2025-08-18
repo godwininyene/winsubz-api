@@ -2,36 +2,32 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable('wallets', {
+    await queryInterface.createTable('giftcards', {
       id: {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
         type: Sequelize.INTEGER
       },
-      totalBalance: {
-        type: Sequelize.DOUBLE,
-        defaultValue:0
+      cardName: {
+        type: Sequelize.STRING,
+        allowNull:false
       },
-      cryptoBalance: {
-        type: Sequelize.DOUBLE,
-        defaultValue:0
+      cardImage: {
+        type: Sequelize.STRING,
+        allowNull:false
       },
-      giftcardBalance: {
-        type: Sequelize.DOUBLE,
-        defaultValue:0
+      cardType: {
+        type: Sequelize.STRING,
+        allowNull:false
       },
-      referralBalance: {
+      cardRate: {
         type: Sequelize.DOUBLE,
-        defaultValue:0
+        allowNull:false
       },
-      userId: {
-        type: Sequelize.INTEGER,
-        references: {
-          model: 'users',
-          key: 'id'
-        },
-        onDelete: 'CASCADE'
+      status: {
+        type: Sequelize.ENUM('active', 'inactive'),
+        defaultValue:'active'
       },
       createdAt: {
         allowNull: false,
@@ -44,6 +40,6 @@ module.exports = {
     });
   },
   async down(queryInterface, Sequelize) {
-    await queryInterface.dropTable('wallets');
+    await queryInterface.dropTable('giftcards');
   }
 };

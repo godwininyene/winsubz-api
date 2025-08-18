@@ -11,5 +11,6 @@ router.get('/logout', authController.logout)
 
 //Authenticated Routes
 router.patch('/updateMe', uploadProfilePhoto, userController.updateMe)
+router.get('/', userController.getAllUsers);
 
 module.exports = router;

@@ -8,6 +8,13 @@ module.exports = (sequelize, DataTypes) => {
     async correctPassword(candidatePassword, userPassword){
       return await bcrypt.compare(candidatePassword, userPassword)
     }
+    changedPasswordAfter(jwtTimeStamp){
+      //User has changed password
+      if(this.passwordChangedAt){
+        const changeTime = this.passwordChangedAt.getTime() /1000;
+        return changeTime > jwtTimeStamp;
+      }
+    }
     static associate(models) {
      User.hasOne(models.Wallet, {foreignKey:'userId', as:'wallet'})
     }
@@ -123,7 +130,7 @@ module.exports = (sequelize, DataTypes) => {
     defaultScope:{
       where: { active: true },
       attributes:{
-        exclude:['passowrd', 'active']
+        exclude:['password', 'active']
       }
     },
     scopes:{

@@ -8,6 +8,10 @@ const storage = multer.diskStorage({
         if(file.fieldname === 'photo'){
             cb(null, 'public/img/users')
         }
+
+        if(file.fieldname === 'cardImage'){
+            cb(null, 'public/img/giftcards')
+        }
     },
     filename:(req, file, cb)=>{
         const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
@@ -35,3 +39,4 @@ const upload = multer({
 
 //Upload user photo
 exports.uploadProfilePhoto = upload.single("photo");
+exports.uploadGiftcard = upload.single('cardImage');

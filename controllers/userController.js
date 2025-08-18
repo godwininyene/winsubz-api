@@ -4,16 +4,18 @@ const{User} = require('./../models');
 
 const filterBody = (obj, ...allowedFields)=>{
     const newObj = {};
-    Object.keys(obj).forEach(el=>{
+    if(obj){
+        Object.keys(obj).forEach(el=>{
         if(allowedFields.includes(el)) newObj[el] = obj[el];
     });
+    }
 
     return newObj;
 }
 
 exports.updateMe = catchAsync(async(req, res, next)=>{
     // 1. Raise error if user try to POST password
-    if(req.body.password || req.passwordConfirm){
+    if(req.body?.password || req.body?.passwordConfirm){
         return next(new AppError('This route is not for password updates. Please use /updateMyPassword route!', '', 400));
     }
 
@@ -37,6 +39,18 @@ exports.updateMe = catchAsync(async(req, res, next)=>{
         status:"success",
         data:{
             user
+        }
+    })
+})
+
+exports.getAllUsers = catchAsync(async(req, res, next)=>{
+    const users = await User.findAll();
+
+    res.status(200).json({
+        status:"success",
+        result:users.length,
+        data:{
+            users
         }
     })
 })

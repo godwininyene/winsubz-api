@@ -30,6 +30,9 @@ const handleCastErrorDb = err=>{
     return new AppError('Invalid data', error, 400)
 }
 
+const handleJWTExpired = ()=> new AppError( "Your token has expired. Please log in again!", " ", 401)
+const handleJWTError = ()=> new AppError("Invalid token. Please log in again!", " ", 401)
+
 const sendErrorProd = (err,  res)=>{
       
     //Operational error, trusted error
@@ -66,6 +69,10 @@ module.exports = (err, req, res, next)=>{
     }else if(process.env.NODE_ENV === 'production'){
 
         let error = { ...err, message: err.message, name: err.name };
+        //Handle jwt error
+        if(error.name === 'TokenExpiredError') error = handleJWTExpired()
+        if(error.name === 'JsonWebTokenError') error = handleJWTError()
+    
         //Handle sequelize Errors
         if(error.name == 'CastError') error = handleCastErrorDb(error)
         if(error.name === 'SequelizeValidationError') error = handleSequelizeValidationError(error)

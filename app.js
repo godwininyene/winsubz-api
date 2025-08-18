@@ -10,6 +10,8 @@ const globalErrorController = require('./controllers/errorController')
 //routers
 const userRouter = require('./routes/userRoutes');
 const giftcardRouter = require('./routes/giftcardRoutes')
+const coinRouter = require('./routes/coinRoutes')
+
 
 const AppError = require('./utils/appError');
 
@@ -50,6 +52,7 @@ app.options(/.*/, cors({
 // Routes
 app.use('/api/v1/users', userRouter);
 app.use('/api/v1/giftcards', giftcardRouter);
+app.use('/api/v1/coins', coinRouter);
 
 //Not found route
 app.all(/.*/, (req, res, next)=>{

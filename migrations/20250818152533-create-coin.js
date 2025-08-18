@@ -2,28 +2,28 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable('giftcards', {
+    await queryInterface.createTable('coins', {
       id: {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
         type: Sequelize.INTEGER
       },
-      cardName: {
+      coinName: {
         type: Sequelize.STRING,
         allowNull:false,
         unique:true
       },
-      cardImage: {
+      coinAddress: {
         type: Sequelize.STRING,
         allowNull:false
       },
-      cardType: {
-        type: Sequelize.STRING,
-        allowNull:false
-      },
-      cardRate: {
+      coinRate: {
         type: Sequelize.DOUBLE,
+        allowNull:false
+      },
+      coinImage: {
+        type: Sequelize.STRING,
         allowNull:false
       },
       status: {
@@ -41,6 +41,6 @@ module.exports = {
     });
   },
   async down(queryInterface, Sequelize) {
-    await queryInterface.dropTable('giftcards');
+    await queryInterface.dropTable('coins');
   }
 };

@@ -84,6 +84,8 @@ exports.deleteGiftcard = catchAsync(async(req, res, next)=>{
         deleteFile(card.cardImage, "giftcards");
     }
 
+    await card.destroy();
+
     res.status(204).json({
         status:"success",
         data:null

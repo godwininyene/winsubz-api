@@ -15,4 +15,33 @@ exports.createCoin = catchAsync(async(req, res, next)=>{
             coin
         }
     })
-})
+});
+
+exports.getAllCoins = catchAsync(async(req, res, next)=>{
+    const filter = {};
+    if(req.user.role === 'user') filter.where={status:'active'};
+
+    const coins = await Coin.findAll(filter);
+
+    res.status(200).json({
+        status:"success",
+        result:coins.length,
+        data:{
+            coins
+        }
+    })
+});
+
+exports.getCoin = catchAsync(async(req, res, next)=>{
+    const coin = await Coin.findByPk(req.params.id);
+    if(!coin){
+        return next(new AppError('No coin was found with that ID', ' ', 404))
+    }
+
+    res.status(200).json({
+        status:"success",
+        data:{
+            coin
+        }
+    })
+});

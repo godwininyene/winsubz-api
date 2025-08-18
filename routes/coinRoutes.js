@@ -11,5 +11,15 @@ router.route('/')
         uploadCoin,
         coinController.createCoin
     )
+    .get(
+        authController.protect,
+        coinController.getAllCoins
+    )
+
+router.route('/:id')
+    .get(
+        authController.protect,
+        coinController.getCoin
+    )
 
 module.exports = router;

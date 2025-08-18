@@ -1,9 +1,7 @@
 const catchAsync = require('./../utils/catchAsync')
 const{Giftcard} = require('./../models');
 const AppError = require('../utils/appError');
-const fs = require("fs");
-const path = require("path");
-
+const deleteFile = require("../utils/deleteFile");
 
 exports.createGiftcard = catchAsync(async(req, res, next)=>{
     //Handle file
@@ -56,19 +54,9 @@ exports.editGiftcard = catchAsync(async(req, res, next)=>{
 
     // Handle file
     if (req.file) {
-        // 1. Remove previous image
+        //1. Delete old image if exists
         if (card.cardImage) {
-            // card.cardImage has full URL, so extract filename(http://127.0.0.1:9000/img/giftcards/cardImage-1755526645717-77652870.jpg)
-            const oldImage = card.cardImage.split("/img/giftcards/")[1];
-            const oldImagePath = path.join(__dirname, "..", "public", "img", "giftcards", oldImage);
-
-            fs.unlink(oldImagePath, (err) => {
-            if (err) {
-                console.error("Failed to delete old image:", err.message);
-            } else {
-                console.log("Old image deleted:", oldImage);
-            }
-            });
+            deleteFile(card.cardImage, "giftcards");
         }
 
         // 2. Save new image
@@ -85,3 +73,19 @@ exports.editGiftcard = catchAsync(async(req, res, next)=>{
     });
 })
 
+exports.deleteGiftcard = catchAsync(async(req, res, next)=>{
+    const card = await Giftcard.findByPk(req.params.id);
+    if(!card){
+        return next(new AppError("No giftcard was found with that ID", " ", 404))
+    }
+
+    //Delete card image if exists
+    if (card.cardImage) {
+        deleteFile(card.cardImage, "giftcards");
+    }
+
+    res.status(204).json({
+        status:"success",
+        data:null
+    })
+})

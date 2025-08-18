@@ -27,5 +27,10 @@ router.route('/:id')
         uploadGiftcard,
         giftcardController.editGiftcard
     )
+    .delete(
+        authController.protect,
+        authController.restrictTo('admin'),
+        giftcardController.deleteGiftcard
+    )
 
 module.exports = router;

@@ -2,11 +2,13 @@ const catchAsync = require('./../utils/catchAsync')
 const{Giftcard} = require('./../models');
 const AppError = require('../utils/appError');
 const deleteFile = require("../utils/deleteFile");
+const APIFeatures = require('../utils/apiFeatures');
+const generatePaginationMeta = require('../utils/pagination');
 
 exports.createGiftcard = catchAsync(async(req, res, next)=>{
     //Handle file
     if(req.file){
-        req.body.cardImage = `${process.env.APP_URL}/img/giftcards/${req.file.filename}`;
+        req.body.cardLogo = `${process.env.APP_URL}/img/giftcards/${req.file.filename}`;
     }
     const card = await Giftcard.create(req.body)
     res.status(201).json({
@@ -18,13 +20,19 @@ exports.createGiftcard = catchAsync(async(req, res, next)=>{
 })
 
 exports.getAllGiftCards = catchAsync(async(req, res, next)=>{
-    const filter = {};
-    if(req.user.role === 'user') filter.where={status:'active'};
-
-    const cards = await Giftcard.findAll(filter);
-
+    const features = new APIFeatures(req.query, 'Giftcard').filter().sort().limitFields().paginate()
+    if(req.user.role === 'user'){
+        features.queryOptions.where = {
+            ...features.queryOptions.where,
+            status: 'active'  // Ensure only active cards are shown to user
+        };
+    }
+    const {count, rows:cards} = await Giftcard.findAndCountAll(features.getFeaures());
+    const{page, limit} = features.getPaginationInfo()
+    const pagination = generatePaginationMeta(req, page, limit, count);
     res.status(200).json({
         status:"success",
+        pagination,
         result:cards.length,
         data:{
             cards
@@ -55,12 +63,12 @@ exports.editGiftcard = catchAsync(async(req, res, next)=>{
     // Handle file
     if (req.file) {
         //1. Delete old image if exists
-        if (card.cardImage) {
-            deleteFile(card.cardImage, "giftcards");
+        if (card.cardLogo) {
+            deleteFile(card.cardLogo, "giftcards");
         }
 
         // 2. Save new image
-        req.body.cardImage = `${process.env.APP_URL}/img/giftcards/${req.file.filename}`;
+        req.body.cardLogo = `${process.env.APP_URL}/img/giftcards/${req.file.filename}`;
     }
 
     await card.update(req.body, { validate: true });
@@ -80,8 +88,8 @@ exports.deleteGiftcard = catchAsync(async(req, res, next)=>{
     }
 
     //Delete card image if exists
-    if (card.cardImage) {
-        deleteFile(card.cardImage, "giftcards");
+    if (card.cardLogo) {
+        deleteFile(card.cardLogo, "giftcards");
     }
 
     await card.destroy();

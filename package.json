@@ -21,10 +21,13 @@
     "express-xss-sanitizer": "^2.0.0",
     "helmet": "^8.1.0",
     "hpp": "^0.2.3",
+    "html-to-text": "^9.0.5",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "mysql2": "^3.14.3",
+    "nodemailer": "^7.0.5",
     "nodemon": "^3.1.10",
+    "pug": "^3.0.3",
     "sequelize": "^6.37.7"
   },
   "devDependencies": {

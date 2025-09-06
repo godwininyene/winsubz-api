@@ -13,7 +13,7 @@ const handleSequelizeValidationError = err=>{
         acc[error.path] = error.message
         return acc;
     }, {})
-    return new AppError('Invalid  Data supplied', errors, 400)
+    return new AppError('Invalid field value', errors, 400)
 }
 
 const handleCastErrorDb = err=>{

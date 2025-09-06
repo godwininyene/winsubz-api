@@ -1,0 +1,227 @@
+style.
+  /* Base styles */
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f8fafc;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+
+
+  .email-wrapper {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    margin: 20px 0;
+  }
+
+  /* Header styles */
+  .header {
+    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    padding: 32px 40px;
+    text-align: center;
+    color: white;
+  }
+
+  .logo {
+    height: 48px;
+    width: auto;
+    margin-bottom: 16px;
+  }
+
+  .header-title {
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.5px;
+  }
+
+  .header-subtitle {
+    font-size: 14px;
+    opacity: 0.9;
+    margin: 8px 0 0;
+    font-weight: 400;
+  }
+
+  /* Content styles */
+  .content {
+    padding: 40px;
+    color: #374151;
+    line-height: 1.6;
+  }
+
+  .content-inner {
+    max-width: 520px;
+    margin: 0 auto;
+  }
+
+  .greeting {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 24px;
+  }
+
+  .message {
+    font-size: 16px;
+    color: #4b5563;
+    margin-bottom: 32px;
+  }
+
+  /* Action button */
+  .action-button {
+    display: inline-block;
+    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    color: white !important;
+    text-decoration: none;
+    padding: 16px 32px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 16px;
+    text-align: center;
+    margin: 24px 0;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .action-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(79, 70, 229, 0.3);
+  }
+
+  /* Transaction details */
+  .transaction-details {
+    background: #f9fafb;
+    border-radius: 12px;
+    padding: 24px;
+    margin: 32px 0;
+    border: 1px solid #e5e7eb;
+  }
+
+  .detail-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .detail-item:last-child {
+    border-bottom: none;
+  }
+
+  .detail-label {
+    font-weight: 500;
+    color: #6b7280;
+  }
+
+  .detail-value {
+    font-weight: 600;
+    color: #1f2937;
+    text-align: right;
+  }
+
+  /* Status badges */
+  .status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 8px;
+  }
+
+  .status-completed {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .status-pending {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .status-failed {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  /* Footer styles */
+  .footer {
+    background: #f8fafc;
+    padding: 32px 40px;
+    text-align: center;
+    color: #6b7280;
+    font-size: 14px;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .footer-links {
+    margin: 20px 0;
+  }
+
+  .footer-link {
+    color: #4F46E5;
+    text-decoration: none;
+    margin: 0 12px;
+    font-weight: 500;
+  }
+
+  .footer-link:hover {
+    text-decoration: underline;
+  }
+
+  .social-links {
+    margin: 20px 0;
+  }
+
+  .social-icon {
+    display: inline-block;
+    margin: 0 8px;
+    color: #6b7280;
+    text-decoration: none;
+    font-size: 16px;
+  }
+
+  .copyright {
+    margin-top: 20px;
+    font-size: 12px;
+    color: #9ca3af;
+  }
+
+  /* Responsive styles */
+  @media only screen and (max-width: 640px) {
+    .container {
+      padding: 10px;
+    }
+
+    .header {
+      padding: 24px 20px;
+    }
+
+    .footer {
+      padding: 24px 20px;
+    }
+
+    .action-button {
+      display: block;
+      margin: 20px auto;
+    }
+
+    .detail-item {
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .detail-value {
+      text-align: left;
+    }
+  }

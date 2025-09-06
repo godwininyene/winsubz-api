@@ -11,11 +11,17 @@ const globalErrorController = require('./controllers/errorController')
 const userRouter = require('./routes/userRoutes');
 const giftcardRouter = require('./routes/giftcardRoutes')
 const coinRouter = require('./routes/coinRoutes')
+const transactionRouter = require('./routes/transactionRoutes')
+const bankAccountRouter = require('./routes/bankAccountRoutes')
+const statsRouter = require('./routes/statsRoutes')
+const settingsRouter = require('./routes/settingsRoutes')
+
 
 
 const AppError = require('./utils/appError');
 
 const app = express();
+
 
 // Security middleware
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
@@ -27,6 +33,12 @@ const limiter = rateLimit({
     message: "Too many requests from this IP, please try again in an hour!"
 });
 app.use('/api', limiter);
+
+
+app.set('view engine', 'pug')
+app.set('views', path.join(__dirname, 'views'));
+// Enable nested query parsing (like Express 4)
+app.set('query parser', 'extended');
 
 // Body parsing
 app.use(express.json());
@@ -49,10 +61,15 @@ app.options(/.*/, cors({
     credentials: true
 }));
 
+
 // Routes
 app.use('/api/v1/users', userRouter);
 app.use('/api/v1/giftcards', giftcardRouter);
 app.use('/api/v1/coins', coinRouter);
+app.use('/api/v1/transactions', transactionRouter);
+app.use('/api/v1/bankAccounts', bankAccountRouter);
+app.use('/api/v1/stats', statsRouter);
+app.use('/api/v1/settings', settingsRouter)
 
 //Not found route
 app.all(/.*/, (req, res, next)=>{

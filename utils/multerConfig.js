@@ -5,15 +5,25 @@ const AppError = require('./appError')
 //Configuring multer storage
 const storage = multer.diskStorage({
     destination:(req, file, cb)=>{
+        
+        
         if(file.fieldname === 'photo'){
             cb(null, 'public/img/users')
         }
 
-        if(file.fieldname === 'cardImage'){
+        if(file.fieldname === 'cardLogo'){
             cb(null, 'public/img/giftcards')
         }
         if(file.fieldname === 'coinImage'){
             cb(null, 'public/img/coins')
+        }
+
+        if(file.fieldname === 'paymentProof'){
+            cb(null, 'public/img/paymentProofs')
+        }
+
+        if(file.fieldname === 'cardImage'){
+            cb(null , 'public/img/cardImages')
         }
     },
     filename:(req, file, cb)=>{
@@ -30,7 +40,7 @@ const fileFilter = (req, file, cb)=>{
         cb(null, true)
     }else{
         cb(
-            new AppError('Invalid file type', {fieldname: `${fieldname} must be an image (JPEG, PNG, GIF)`}, 400)
+            new AppError('Invalid file type', {[fieldname]: `${fieldname} must be an image (JPEG, PNG, GIF)`}, 400)
         )
     }
 }
@@ -40,7 +50,11 @@ const upload = multer({
     fileFilter
 })
 
-//Upload user photo
+
 exports.uploadProfilePhoto = upload.single("photo");
-exports.uploadGiftcard = upload.single('cardImage');
-exports.uploadCoin = upload.single('coinImage')
+exports.uploadGiftcard = upload.single('cardLogo');
+exports.uploadCoin = upload.single('coinImage');
+exports.uploadTransactionFiles = upload.fields([
+  { name: 'paymentProof', maxCount: 1 },
+  { name: 'cardImage', maxCount: 1 }
+]);

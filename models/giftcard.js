@@ -17,12 +17,12 @@ module.exports = (sequelize, DataTypes) => {
         notEmpty:{msg:'Card name cannot be empty'}
       }
     },
-    cardImage:{
+    cardLogo:{
       type:DataTypes.STRING,
       allowNull:false,
       validate:{
-        notNull:{msg:'Please provide card image/logo'},
-        notEmpty:{msg:'Card image/logo cannot be empty'}
+        notNull:{msg:'Please provide card logo'},
+        notEmpty:{msg:'Card logo cannot be empty'}
       }
     },
     cardType:{

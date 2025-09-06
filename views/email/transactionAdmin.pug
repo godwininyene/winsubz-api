@@ -1,0 +1,82 @@
+extends baseEmail
+
+block content
+  table(role='presentation', border='0', cellpadding='0', cellspacing='0', width='100%', style='border-collapse: collapse;')
+    tr
+      td
+        p.greeting(style='margin: 0 0 20px 0; font-size: 16px;') Hello Admin,
+        
+        p(style='margin: 0 0 15px 0;') A new transaction requires your attention.
+        
+        table(role='presentation', border='0', cellpadding='0', cellspacing='0', width='100%', style='border-collapse: collapse; margin: 20px 0;')
+          tr
+            td(style='padding: 0 0 10px 0;')
+              strong Transaction ID: 
+              | #{ref}
+              span.status-badge(class=`status-${status}` style='display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-left: 8px; text-transform: capitalize;') #{status}
+          tr
+            td(style='padding: 0 0 10px 0;')
+              strong User: 
+              | #{user.firstName} #{user.lastName} (#{user.email})
+          tr
+            td(style='padding: 0 0 10px 0;')
+              strong Amount: 
+              | ₦#{new Intl.NumberFormat().format(amount)}
+          tr
+            td(style='padding: 0 0 20px 0;')
+              strong Date: 
+              | #{new Date(createdAt).toLocaleString()}
+        
+        table.detail-container(role='presentation', border='0', cellpadding='0', cellspacing='0', width='100%', style='border-collapse: collapse; background-color: #f8f9fa; border-radius: 8px; padding: 15px; margin: 20px 0;')
+          tr
+            td
+              table(role='presentation', border='0', cellpadding='0', cellspacing='0', width='100%', style='border-collapse: collapse;')
+                tr.detail-item
+                  td.detail-label(style='padding: 8px; font-weight: bold; width: 40%;') Transaction Type:
+                  td.detail-value(style='padding: 8px; width: 60%;') #{transactionType === 'buy' ? 'Purchase' : 'Sale'} #{assetType === 'coin' ? 'Cryptocurrency' : 'Gift Card'}
+                tr.detail-item
+                  td.detail-label(style='padding: 8px; font-weight: bold;') Flow Type:
+                  td.detail-value(style='padding: 8px;') #{flowType === 'withdrawal' ? 'Withdrawal' : 'Deposit'}
+                tr.detail-item
+                  td.detail-label(style='padding: 8px; font-weight: bold;') #{assetType === 'coin' ? 'Coin Type:' : 'Card Type:'}
+                  td.detail-value(style='padding: 8px;') #{assetName} 
+                tr.detail-item
+                  td.detail-label(style='padding: 8px; font-weight: bold;') Rate:
+                  td.detail-value(style='padding: 8px;') ₦#{assetRate}/$
+                tr.detail-item
+                  td.detail-label(style='padding: 8px; font-weight: bold;') USD Amount:
+                  td.detail-value(style='padding: 8px;') $#{usdAmount}
+                
+                if assetType === 'coin' && coinDetails
+                  tr.detail-item
+                    td.detail-label(style='padding: 8px; font-weight: bold;') #{transactionType === 'buy' ? 'Receiving Wallet:' : 'Sending Wallet:'}
+                    td.detail-value(style='padding: 8px;') #{coinDetails.receivingWalletAddress ? `${coinDetails.receivingWalletAddress.network}: ${coinDetails.receivingWalletAddress.address}` : 'Not specified'}
+                  tr.detail-item
+                    td.detail-label(style='padding: 8px; font-weight: bold;') Coin Amount:
+                    td.detail-value(style='padding: 8px;') #{coinDetails.coinAmount}
+                
+                if assetType === 'giftcard' && giftcardDetails
+                  if transactionType === 'sell'
+                    tr.detail-item
+                      td.detail-label(style='padding: 8px; font-weight: bold;') Card Number:
+                      td.detail-value(style='padding: 8px;') #{giftcardDetails.cardNum || 'Not provided'}
+                
+                if receivingAccount
+                  tr.detail-item
+                    td.detail-label(style='padding: 8px; font-weight: bold;') Bank Name:
+                    td.detail-value(style='padding: 8px;') #{receivingAccount.bank}
+                  tr.detail-item
+                    td.detail-label(style='padding: 8px; font-weight: bold;') Account Number:
+                    td.detail-value(style='padding: 8px;') #{receivingAccount.number}
+                  tr.detail-item
+                    td.detail-label(style='padding: 8px; font-weight: bold;') Account Name:
+                    td.detail-value(style='padding: 8px;') #{receivingAccount.name}
+        
+        if paymentProof
+          p(style='margin: 20px 0 10px 0;') Payment Proof:
+          img(src=paymentProof, alt='Payment Proof', style='max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; padding: 5px;')
+        
+        p(style='margin: 20px 0 0 0;')
+          | Please review this transaction in the 
+          a(href=`${url}` style='color: #007bff; text-decoration: none;') admin dashboard
+          | .

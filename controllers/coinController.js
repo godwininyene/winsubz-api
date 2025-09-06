@@ -2,7 +2,8 @@ const catchAsync = require('./../utils/catchAsync')
 const{Coin} = require('./../models');
 const AppError = require('../utils/appError');
 const deleteFile = require("../utils/deleteFile");
-
+const APIFeatures = require("./../utils/apiFeatures");
+const generatePaginationMeta = require('./../utils/pagination')
 exports.createCoin = catchAsync(async(req, res, next)=>{
     //Handle file
     if(req.file){
@@ -18,13 +19,20 @@ exports.createCoin = catchAsync(async(req, res, next)=>{
 });
 
 exports.getAllCoins = catchAsync(async(req, res, next)=>{
-    const filter = {};
-    if(req.user.role === 'user') filter.where={status:'active'};
 
-    const coins = await Coin.findAll(filter);
-
+    const features = new APIFeatures(req.query, 'Coin').filter().sort().limitFields().paginate()
+    if(req.user.role === 'user'){
+        features.queryOptions.where = {
+            ...features.queryOptions.where,
+            status: 'active'  // Ensure only active coins are shown to user
+        };
+    }
+    const {count, rows:coins} = await Coin.findAndCountAll(features.getFeaures());
+    const{page, limit} = features.getPaginationInfo()
+    const pagination = generatePaginationMeta(req, page, limit, count);
     res.status(200).json({
         status:"success",
+        pagination,
         result:coins.length,
         data:{
             coins

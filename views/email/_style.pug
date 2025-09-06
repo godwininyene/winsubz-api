@@ -1,0 +1,132 @@
+style.
+  /* Responsive styles */
+  @media only screen and (max-width: 620px) {
+    table.container {
+      width: 100% !important;
+    }
+    td.content {
+      padding: 20px 15px !important;
+    }
+    /*.footer-link, .social-icon {
+      display: block !important;
+      margin: 8px 0 !important;
+    }*/
+    .detail-item {
+      display: block !important;
+      width: 100% !important;
+    }
+    .detail-label, .detail-value {
+      display: block !important;
+      width: 100% !important;
+      text-align: left !important;
+      padding: 5px 0 !important;
+    }
+  }
+
+  /* General styles */
+  body {
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: none;
+    width: 100% !important;
+    height: 100%;
+    line-height: 1.6;
+  }
+
+  .email-wrapper {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    margin: 20px 0;
+  }
+
+  /* Header styles */
+  .header {
+    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    padding: 32px 40px;
+    text-align: center;
+    color: white;
+  }
+
+  .logo {
+    height: 48px;
+    width: auto;
+    margin-bottom: 16px;
+  }
+
+  .header-title {
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.5px;
+  }
+ 
+  /* Status badges */
+  .status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 8px;
+  }
+
+  .status-completed {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .status-pending {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .status-failed {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  /* Action button */
+  .action-button {
+    display: inline-block;
+    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    color: white !important;
+    text-decoration: none;
+    padding: 16px 32px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 16px;
+    text-align: center;
+    margin: 24px 0;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .action-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 25px rgba(79, 70, 229, 0.3);
+  }
+
+  .greeting {
+    font-size: 16px;
+    margin-bottom: 20px;
+  }
+
+  .detail-item {
+    display: table;
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  .detail-label {
+    display: table-cell;
+    width: 40%;
+    font-weight: bold;
+    padding-right: 15px;
+    vertical-align: top;
+  }
+
+  .detail-value {
+    display: table-cell;
+    width: 60%;
+    vertical-align: top;
+  }

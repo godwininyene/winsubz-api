@@ -14,7 +14,7 @@ module.exports = {
         allowNull:false,
         unique:true
       },
-      cardImage: {
+      cardLogo: {
         type: Sequelize.STRING,
         allowNull:false
       },

@@ -4,33 +4,18 @@ const authController = require('./../controllers/authController');
 const giftcardController = require('./../controllers/giftcardController');
 const{uploadGiftcard} = require('./../utils/multerConfig');
 
-router.route('/')
-    .post(
-        authController.protect,
-        authController.restrictTo('admin'),
-        uploadGiftcard,
-        giftcardController.createGiftcard
-    )
-    .get(
-        authController.protect,
-        giftcardController.getAllGiftCards
-    )
+// Apply protect middleware to all routes
+router.use(authController.protect);
 
-router.route('/:id')
-    .get(
-        authController.protect,
-        giftcardController.getGiftcard
-    )
-    .patch(
-        authController.protect,
-        authController.restrictTo('admin'),
-        uploadGiftcard,
-        giftcardController.editGiftcard
-    )
-    .delete(
-        authController.protect,
-        authController.restrictTo('admin'),
-        giftcardController.deleteGiftcard
-    )
+// Public routes (authenticated users)
+router.get('/', giftcardController.getAllGiftCards);
+router.get('/:id', giftcardController.getGiftcard);
+
+// Admin routes
+router.use(authController.restrictTo('admin'));
+
+router.post('/', uploadGiftcard,   giftcardController.createGiftcard);
+router.patch('/:id', uploadGiftcard, giftcardController.editGiftcard);
+router.delete('/:id',  giftcardController.deleteGiftcard);
 
 module.exports = router;

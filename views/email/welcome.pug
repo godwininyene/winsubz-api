@@ -1,0 +1,41 @@
+extends baseEmail
+
+block content
+    strong Hi #{firstName},
+    
+    if type == 'account_approved'
+        h4 Congratulations! Account Approved
+        p Your account has been successfully reviewed and approved. You can now kindly 
+            a(href=`${url}`, target='_blank') Login to your dashboard
+            | , fund your account, and proceed to invest in our platform.
+        p
+        | Best Regards,
+        br
+        strong Customer Support Team.
+    
+    else if type == 'account_denied'
+        h4 Sorry! Account Denied
+        p Thank you for registering on our platform.
+        p Unfortunately, your account was reviewed but denied approval for certain reasons.
+        p Kindly contact our support team urgently to find out why.
+        p Our Support Team will also contact you as soon as possible regarding the disapproval reasons.
+        p
+        | Best Regards,
+        br
+        strong Customer Support Team.
+    
+    else if type == 'account_deactivated'
+        h4 Account Deactivated
+        p Your account has been deactivated. If you believe this is an error or have any questions, please contact our Support Team for further assistance.
+        p
+        | Best Regards,
+        br
+        strong Customer Support Team.
+    
+    else
+        h4 Notification
+        p There is an update regarding your account status. Please contact support for more information.
+        p
+        | Best Regards,
+        br
+        strong Customer Support Team.

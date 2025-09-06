@@ -1,0 +1,96 @@
+extends baseEmail
+
+block content
+  table(role='presentation', border='0', cellpadding='0', cellspacing='0', width='100%', style='border-collapse: collapse;')
+    tr
+      td
+        p.greeting(style='margin: 0 0 20px 0; font-size: 16px;') Hello #{firstName},
+        
+        //- Conditional messages based on transaction type and status
+        if transactionType === 'buy' && status === 'pending'
+          p(style='margin: 0 0 15px 0;') We've received your payment of ₦#{new Intl.NumberFormat().format(amount)} and we're processing your order.
+        else if assetType === 'coin' && transactionType === 'sell' && status === 'pending'
+          p(style='margin: 0 0 15px 0;') We've received your transaction of #{coinDetails.coinAmount} #{assetName} and we're processing your payment.
+        else if status === 'completed' || status === 'success'
+          p(style='margin: 0 0 15px 0;') Your transaction has been approved successfully!
+        else if status === 'pending'
+          p(style='margin: 0 0 15px 0;') Your transaction is being processed.
+        else
+          p(style='margin: 0 0 15px 0;') Your transaction was not approved: #{status}
+        
+        table(role='presentation', border='0', cellpadding='0', cellspacing='0', width='100%', style='border-collapse: collapse; margin: 20px 0;')
+          tr
+            td(style='padding: 0 0 10px 0;')
+              strong Transaction Reference: 
+              | #{ref}
+              span.status-badge(class=`status-${status}` style='display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-left: 8px; text-transform: capitalize;') #{status}
+          tr
+            td(style='padding: 0 0 10px 0;')
+              strong Amount: 
+              | ₦#{new Intl.NumberFormat().format(amount)}
+          tr
+            td(style='padding: 0 0 20px 0;')
+              strong Date: 
+              | #{new Date(createdAt).toLocaleString()}
+        
+        table.detail-container(role='presentation', border='0', cellpadding='0', cellspacing='0', width='100%', style='border-collapse: collapse; background-color: #f8f9fa; border-radius: 8px; padding: 15px; margin: 20px 0;')
+          tr
+            td
+              table(role='presentation', border='0', cellpadding='0', cellspacing='0', width='100%', style='border-collapse: collapse;')
+                tr.detail-item
+                  td.detail-label(style='padding: 8px; font-weight: bold; width: 40%;') Transaction Type:
+                  td.detail-value(style='padding: 8px; width: 60%;') #{transactionType === 'buy' ? 'Purchase' : 'Sale'} #{assetType === 'coin' ? 'Cryptocurrency' : 'Gift Card'}
+                tr.detail-item
+                  td.detail-label(style='padding: 8px; font-weight: bold;') Flow Type:
+                  td.detail-value(style='padding: 8px;') #{flowType === 'withdrawal' ? 'Withdrawal' : 'Deposit'}
+                tr.detail-item
+                  td.detail-label(style='padding: 8px; font-weight: bold;') #{assetType === 'coin' ? 'Coin Type:' : 'Card Type:'}
+                  td.detail-value(style='padding: 8px;') #{assetName} 
+                tr.detail-item
+                  td.detail-label(style='padding: 8px; font-weight: bold;') Rate:
+                  td.detail-value(style='padding: 8px;') ₦#{assetRate.toLocaleString()}/$
+                tr.detail-item
+                  td.detail-label(style='padding: 8px; font-weight: bold;') USD Amount:
+                  td.detail-value(style='padding: 8px;') $#{usdAmount}
+                
+                if assetType === 'coin' && coinDetails
+                  tr.detail-item
+                    td.detail-label(style='padding: 8px; font-weight: bold;') #{transactionType === 'buy' ? 'Receiving Wallet:' : 'Sending Wallet:'}
+                    td.detail-value(style='padding: 8px;') #{coinDetails.receivingWalletAddress ? `${coinDetails.receivingWalletAddress.network}: ${coinDetails.receivingWalletAddress.address}` : 'Not specified'}
+                  tr.detail-item
+                    td.detail-label(style='padding: 8px; font-weight: bold;') Coin Amount:
+                    td.detail-value(style='padding: 8px;') #{coinDetails.coinAmount}
+                
+                if assetType === 'giftcard' && giftcardDetails
+                  if transactionType === 'sell'
+                    tr.detail-item
+                      td.detail-label(style='padding: 8px; font-weight: bold;') Card Number:
+                      td.detail-value(style='padding: 8px;') #{giftcardDetails.cardNum || 'Not provided'}
+                
+                if receivingAccount
+                  tr.detail-item
+                    td.detail-label(style='padding: 8px; font-weight: bold;') Bank Name:
+                    td.detail-value(style='padding: 8px;') #{receivingAccount.bank}
+                  tr.detail-item
+                    td.detail-label(style='padding: 8px; font-weight: bold;') Account Number:
+                    td.detail-value(style='padding: 8px;') #{receivingAccount.number}
+                  tr.detail-item
+                    td.detail-label(style='padding: 8px; font-weight: bold;') Account Name:
+                    td.detail-value(style='padding: 8px;') #{receivingAccount.name}
+        
+        if status === 'pending'
+          p(style='margin: 20px 0; font-size: 14px; color: #6c757d;') Your transaction is being processed. You will be notified once it's completed.
+        
+        if paymentProof
+          p(style='margin: 20px 0 10px 0;') Payment Proof:
+          img(src=paymentProof, alt='Payment Proof', style='max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; padding: 5px;')
+        
+        if (status === 'completed' || status === 'success') && flowType === 'deposit'
+          p(style='margin: 20px 0 0 0;') Funds will be transferred to your account within 24 hours.
+        
+        //- Add action button for non-pending statuses
+        if status !== 'pending'
+          table(role='presentation', border='0', cellpadding='0', cellspacing='0', width='100%', style='border-collapse: collapse; margin: 30px 0;')
+            tr
+              td(align='center')
+                a.action-button(href=`${url}` style='display: inline-block; padding: 12px 24px; background-color: #007bff; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: 600;') Track Transaction Status

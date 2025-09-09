@@ -21,7 +21,8 @@ const settingsRouter = require('./routes/settingsRoutes')
 const AppError = require('./utils/appError');
 
 const app = express();
-
+// Tell Express to trust proxy headers like X-Forwarded-For
+app.set('trust proxy', 1);
 
 // Security middleware
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));

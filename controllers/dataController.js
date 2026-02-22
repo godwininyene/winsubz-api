@@ -1,0 +1,248 @@
+const axios = require('../lib/axios');
+const catchAsync = require('./../utils/catchAsync');
+const AppError = require('../utils/appError');
+const {
+    VTUTransaction,
+    Wallet,
+    sequelize
+} = require("../models");
+
+
+function applyMarkup(amount) {
+    const RATE = 0.07;   // 7%
+    const MIN = 50;
+    const MAX = 250;
+
+    let profit = Math.round(amount * RATE);
+
+    if (profit < MIN) profit = MIN;
+    if (profit > MAX) profit = MAX;
+
+    const sellingPrice = amount + profit;
+
+    // Round final price to nearest ₦50
+    return Math.round(sellingPrice / 50) * 50;
+}
+
+
+
+exports.getDataPlans = catchAsync(async (req, res, next) => {
+    try {
+        const result = await axios.get(`api/plans?service=${req.query.network}`);
+        const plans = result.data.plans;
+        const formattedPlans = plans.map(plan => {
+            return {
+                serviceId: req.query.network,
+                plan: plan.value,
+                provider_amount: parseInt(plan.price),
+                amount: applyMarkup(parseInt(plan.price)),
+                label: plan.displayName
+            };
+        });
+        res.status(200).json({
+            status: "success",
+            data: {
+                network: result.data.network,
+                plans: formattedPlans
+            }
+        });
+    } catch (err) {
+        if (err.response) {
+            return next(
+                new AppError(err.response.data?.error || 'External API error', "", err.response.status)
+            );
+        }
+
+        if (err.request) {
+            return next(
+                new AppError(
+                    'External API did not respond',
+                    'Service temporarily unavailable',
+                    502
+                )
+            );
+        }
+
+        return next(err);
+    }
+});
+
+
+exports.buyData = catchAsync(async (req, res, next) => {
+    const { serviceId, plan, phone, requestId } = req.body;
+
+    if (!requestId) {
+        return next(new AppError("Request ID is required", "", 400));
+    }
+
+    if (!serviceId || !phone || !plan) {
+        return next(new AppError("serviceID, phone and plan are required", "", 400));
+    }
+
+    // Idempotency check
+    const existingTx = await VTUTransaction.findOne({ where: { requestId } });
+
+    if (existingTx) {
+        return res.status(200).json({
+            status: "success",
+            data: {
+                service: existingTx.serviceName,
+                amount: existingTx.sellingPrice,
+                status: existingTx.status,
+                beneficiary: existingTx.beneficiary,
+                createdAt: existingTx.createdAt
+            }
+        });
+    }
+
+    const plansRes = await axios.get(`api/plans?service=${serviceId}`);
+
+    const plans = plansRes.data.plans;
+    const selectedPlan = plans.find(p => p.value === plan);
+
+    if (!selectedPlan) {
+        return next(new AppError("Invalid data plan selected", "", 400));
+    }
+
+    const faceValue = parseInt(selectedPlan.price);
+    const sellingPrice = applyMarkup(faceValue);
+
+    const t = await sequelize.transaction();
+    let wallet;
+    let tx;
+
+    try {
+        wallet = await Wallet.findOne({
+            where: { userId: req.user.id },
+            lock: t.LOCK.UPDATE,
+            transaction: t
+        });
+
+        if (!wallet) {
+            await t.rollback();
+            return next(new AppError("Wallet not found", "", 404));
+        }
+
+        if (wallet.vtuBalance < sellingPrice) {
+            await t.rollback();
+            return next(new AppError("Insufficient wallet balance", "", 400));
+        }
+
+        const initialBalance = wallet.vtuBalance;
+
+        wallet.vtuBalance -= sellingPrice;
+        await wallet.save({ transaction: t });
+
+        tx = await VTUTransaction.create({
+            userId: req.user.id,
+            type: 'data',
+            provider: 'gsubz',
+            serviceId,
+            serviceName: plansRes.data.service || selectedPlan.displayName,
+            beneficiary: phone,
+            planCode: plan,
+            planLabel: selectedPlan.displayName,
+
+            faceValue: faceValue,           // ✅ what user is buying
+            costPrice: faceValue,           // temp, will be replaced by actualCost
+            sellingPrice,                   // ✅ what user pays
+
+            profit: 0,
+            providerRef: null,
+            requestId,
+            status: 'pending',
+            providerStatus: null,
+            initialBalance,
+            finalBalance: null,          // 🔥 don't lie yet
+            providerDiscount: 0
+        }, { transaction: t });
+
+        await t.commit();
+    } catch (err) {
+        await t.rollback();
+        throw err;
+    }
+
+    let providerResponse;
+    let success = false;
+
+    try {
+        const formData = new FormData();
+        formData.append('serviceID', serviceId);
+        formData.append('plan', plan);
+        formData.append('phone', phone);
+        formData.append('amount', '')
+        formData.append('api', process.env.GSUBZ_API_KEY);
+
+        providerResponse = await axios.post(`api/pay/`, formData, {
+            headers: { Authorization: `Bearer ${process.env.GSUBZ_API_KEY}` }
+        });
+
+        // console.log('PROVIDER RESPONSE', providerResponse);
+        const providerCode = String(providerResponse.data?.code);
+        const providerStatus = String(providerResponse.data?.status || "").toLowerCase();
+
+        success = providerCode === "200" &&
+            (providerStatus === "successful" || providerStatus === "transaction_successful");
+
+        const actualCost = Number(providerResponse.data?.amountPaid || faceValue);
+        const providerDiscount = Math.max(faceValue - actualCost, 0);
+        const realProfit = sellingPrice - actualCost;
+
+
+
+        if (!success) {
+            wallet.vtuBalance += sellingPrice;
+            await wallet.save();
+        }
+
+        await tx.update({
+            status: success ? 'success' : 'failed',
+            providerStatus: providerResponse.data?.status || null,
+            providerRef: providerResponse.data?.transactionID || null,
+            costPrice: Math.round(actualCost),
+            amountPaid: actualCost,// what provider charged
+            profit: Math.round(realProfit),
+            providerDiscount: Math.round(providerDiscount),
+            finalBalance: wallet.vtuBalance     // ✅ true final balance
+        });
+
+    } catch (err) {
+        wallet.vtuBalance += sellingPrice;
+        await wallet.save();
+        await tx.update({
+            status: 'failed',
+            finalBalance: wallet.vtuBalance     // ✅ true final balance
+        });
+        throw err;
+    }
+
+    const refreshedTx = await VTUTransaction.findByPk(tx.id);
+
+    const transaction = {
+        service: refreshedTx.serviceName,
+        amount: refreshedTx.sellingPrice,
+        status: refreshedTx.status,
+        beneficiary: refreshedTx.beneficiary,
+        ref: refreshedTx.providerRef || 'N/A',
+        createdAt: refreshedTx.createdAt
+    };
+
+    if (success) {
+        return res.status(200).json({ status: "success", data: { transaction } });
+    }
+
+    if (!success && providerResponse.data?.description === 'INSUFFICIENT_BALANCE') {
+        return next(new AppError(
+            "Service temporarily unavailable. Please try again later.",
+            "Provider wallet low",
+            503
+        ));
+    }
+
+    return res.status(400).json({
+        status: "fail",
+        message: providerResponse?.data?.description || "Transaction failed",
+        data: { transaction }
+    });
+});

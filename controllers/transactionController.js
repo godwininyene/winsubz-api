@@ -2,8 +2,7 @@ const {
   Transaction,
   GiftcardTransaction,
   CoinTransaction,
-  Giftcard,
-  Coin,
+  VTUTransaction,
   User,
   Wallet,
 } = require("../models");
@@ -134,7 +133,7 @@ exports.createTransaction = catchAsync(async (req, res, next) => {
     const admin = await Settings.findByPk(1)
     const adminInfo = {
       firstName: admin.platformName,
-      email:admin.adminEmail,
+      email: admin.adminEmail,
     };
     const url = `${process.env.FRONTEND_URL}/admin/dashboard`;
     const adminData = {
@@ -274,13 +273,29 @@ exports.getRecentTransactions = catchAsync(async (req, res, next) => {
     .sort()
     .limitFields()
     .paginate();
-  features.queryOptions.include = [
-    {
+  // features.queryOptions.include = [
+  //   {
+  //     model: User,
+  //     as: "user",
+  //     attributes: ["firstName", "lastName", "photo", "email"],
+  //   },
+  // ];
+  // Restrict transactions for users to only their own
+  if (req.user?.role === "user") {
+    features.queryOptions.where = {
+      ...features.queryOptions.where,
+      userId: req.user.id, // Ensure only user's transactions are returned
+    };
+  }
+
+  // If admin, include user details
+  if (req.user.role === "admin") {
+    features.queryOptions.include.push({
       model: User,
       as: "user",
       attributes: ["firstName", "lastName", "photo", "email"],
-    },
-  ];
+    });
+  }
   //Execute query
   const transactions = await Transaction.findAll(features.getFeaures());
   //Send Response
@@ -323,7 +338,7 @@ exports.getPendingTransactions = catchAsync(async (req, res, next) => {
   });
 });
 
-exports.getAllTransactions = catchAsync(async (req, res, next) => {
+exports.getAllTradingTransactions = catchAsync(async (req, res, next) => {
   const features = new APIFeatures(req.query, "Transaction")
     .filter()
     .sort()
@@ -371,5 +386,47 @@ exports.getAllTransactions = catchAsync(async (req, res, next) => {
     },
   });
 });
+
+
+
+exports.getAllVtuTransactions = catchAsync(async (req, res, next) => {
+  const features = new APIFeatures(req.query, "VTUTransaction")
+    .filter()
+    .sort()
+    .limitFields()
+    .paginate();
+  // Restrict transactions for users to only their own
+  if (req.user?.role === "user") {
+    features.queryOptions.where = {
+      ...features.queryOptions.where,
+      userId: req.user.id, // Ensure only user's transactions are returned
+    };
+  }
+  // If admin, include user details
+  if (req.user.role === "admin") {
+    features.queryOptions.include.push({
+      model: User,
+      as: "user",
+      attributes: ["firstName", "lastName", "photo", "email"],
+    });
+  }
+  //Execute query
+  const { count, rows: completeTransactions } =
+    await VTUTransaction.findAndCountAll(features.getFeaures());
+  const { page, limit } = features.getPaginationInfo();
+  const pagination = generatePaginationMeta(req, page, limit, count);
+
+  //Send Response
+  res.status(200).json({
+    status: "success",
+    pagination,
+    result: completeTransactions.length,
+    data: {
+      transactions: completeTransactions,
+    },
+  });
+});
+
+
 
 

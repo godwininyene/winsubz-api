@@ -21,6 +21,10 @@ module.exports = (sequelize, DataTypes) => {
     giftcardBalance:{
       type: DataTypes.DOUBLE
     },
+    vtuBalance:{
+      type:DataTypes.DOUBLE,
+      defaultValue:0
+    },
     referralBalance:{
       type:DataTypes.DOUBLE,
       defaultValue:0

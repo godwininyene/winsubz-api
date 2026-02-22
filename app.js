@@ -11,6 +11,10 @@ const globalErrorController = require('./controllers/errorController')
 const userRouter = require('./routes/userRoutes');
 const giftcardRouter = require('./routes/giftcardRoutes')
 const coinRouter = require('./routes/coinRoutes')
+const dataRouter = require('./routes/dataRoutes')
+const airtimeRouter = require('./routes/airtimeRoutes')
+const electricityRouter = require('./routes/electricityRoutes')
+const cableRouter  = require('./routes/cableRoutes');
 const transactionRouter = require('./routes/transactionRoutes')
 const bankAccountRouter = require('./routes/bankAccountRoutes')
 const statsRouter = require('./routes/statsRoutes')
@@ -71,7 +75,10 @@ app.use('/api/v1/transactions', transactionRouter);
 app.use('/api/v1/bankAccounts', bankAccountRouter);
 app.use('/api/v1/stats', statsRouter);
 app.use('/api/v1/settings', settingsRouter)
-
+app.use('/api/v1/data', dataRouter)
+app.use('/api/v1/airtime', airtimeRouter);
+app.use('/api/v1/electricity', electricityRouter)
+app.use('/api/v1/cables', cableRouter)
 //Not found route
 app.all(/.*/, (req, res, next)=>{
     return next(new AppError(`The requested URL ${req.originalUrl} was not found on this server!`, '', 404))

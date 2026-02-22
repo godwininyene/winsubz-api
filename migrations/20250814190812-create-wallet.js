@@ -11,19 +11,23 @@ module.exports = {
       },
       totalBalance: {
         type: Sequelize.DOUBLE,
-        defaultValue:0
+        defaultValue: 0
       },
       cryptoBalance: {
         type: Sequelize.DOUBLE,
-        defaultValue:0
+        defaultValue: 0
       },
       giftcardBalance: {
         type: Sequelize.DOUBLE,
-        defaultValue:0
+        defaultValue: 0
+      },
+      vtuBalance: {
+        type: Sequelize.DOUBLE,
+        defaultValue: 0
       },
       referralBalance: {
         type: Sequelize.DOUBLE,
-        defaultValue:0
+        defaultValue: 0
       },
       userId: {
         type: Sequelize.INTEGER,

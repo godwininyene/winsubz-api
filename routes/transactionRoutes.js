@@ -20,7 +20,8 @@ router.patch("/:id/action/:action",
 
 // Public routes (for all authenticated users)
 router.get("/recent", transactionController.getRecentTransactions);
-router.get('/', transactionController.getAllTransactions)
+router.get('/', transactionController.getAllTradingTransactions)
+router.get('/vtu', transactionController.getAllVtuTransactions)
 
 // User-specific routes
 router.use(authController.restrictTo("user"));

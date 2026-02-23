@@ -209,9 +209,11 @@ exports.getStatsForAdmin = catchAsync(async (req, res, next) => {
     },
   ];
 
+  const recentVtuTransactions = await getRecentVtuTransactions(req);
+
   res.status(200).json({
     status: "success",
-    data: { stats: response },
+    data: { stats: response, recentVtuTransactions },
   });
 });
 
@@ -279,6 +281,8 @@ exports.getAdminChartData = catchAsync(async (req, res, next) => {
     group: ["assetType", "transactionType"],
     raw: true,
   });
+
+  
 
   res.status(200).json({
     status: "success",

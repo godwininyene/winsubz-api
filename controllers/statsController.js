@@ -13,7 +13,7 @@ const getRecentVtuTransactions = async (req) => {
   req.query.limit = 5;
   req.query.sort = "-createdAt";
   req.query.fields =
-    "providerRef,serviceName,faceValue,status,beneficiary,planLabel,createdAt";
+    "providerRef,serviceName,faceValue,sellingPrice,type,status,beneficiary,planLabel,createdAt";
   // Calculate date 7 days ago
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);

@@ -4,6 +4,19 @@ const catchAsync = require("../utils/catchAsync");
 const jwt = require("jsonwebtoken");
 const { promisify } = require("util");
 
+const generateAccountId = async () => {
+  let code;
+  let exists = true;
+
+  while (exists) {
+    const num = Math.floor(100 + Math.random() * 900);
+    code = `WZ${num}`;   // WZ234
+    exists = await User.findOne({ where: { accountId: code } });
+  }
+
+  return code;
+};
+
 const signToken = (user) => {
   return jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRESIN,
@@ -49,6 +62,7 @@ exports.signup = catchAsync(async (req, res, next) => {
     password: req.body?.password,
     passwordConfirm: req.body?.passwordConfirm,
     referralId: req.body?.referralId,
+    accountId:await generateAccountId()
   });
   //2. Create a wallet for the newly created user
   await Wallet.create({ userId: user.id });

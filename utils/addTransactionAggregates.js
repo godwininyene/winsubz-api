@@ -1,44 +1,75 @@
-const { sequelize } = require('./../models')
+const { sequelize } = require('./../models');
+
 const addTransactionAggregates = (queryOptions) => {
-    queryOptions.attributes = {
-        include: [
-            [
-                sequelize.literal(`(
-                    SELECT COUNT(*) 
-                    FROM transactions 
-                    WHERE transactions.userId = User.id
-                )`),
-                'transactionCount'
-            ],
-            [
-                sequelize.literal(`(
-                    SELECT COALESCE(SUM(amount), 0) 
-                    FROM transactions 
-                    WHERE transactions.userId = User.id
-                    AND transactions.status = 'completed'
-                )`),
-                'transactionVolume'
-            ]
-        ]
-    };
-    //using includes instead of subqueries
-    // Include transaction aggregates using include
-    // queryOptions.include = [{
-    //     model: Transaction,
-    //     as: 'transactions',
-    //     attributes: [], // We don't need the actual transaction data
-    //     required: false // Use left join to include users with no transactions
-    // }];
+  queryOptions.attributes = {
+    include: [
+      // ===============================
+      // TOTAL TRANSACTION COUNT (CRYPTO + GIFTCARD)
+      // ===============================
+      [
+        sequelize.literal(`(
+          SELECT COUNT(*) 
+          FROM transactions 
+          WHERE transactions.userId = User.id
+        )`),
+        'transactionCount'
+      ],
 
-    // queryOptions.attributes = {
-    //     include: [
-    //         [sequelize.fn('COUNT', sequelize.col('transactions.id')), 'transactionCount'],
-    //         [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('transactions.amount')), 0), 'transactionVolume']
-    //     ],
-    //     group: ['User.id'] // Group by user id to avoid duplicates
-    // };
+      // ===============================
+      // TOTAL TRANSACTION VOLUME (CRYPTO + GIFTCARD)
+      // ===============================
+      [
+        sequelize.literal(`(
+          SELECT COALESCE(SUM(amount), 0) 
+          FROM transactions 
+          WHERE transactions.userId = User.id
+          AND transactions.status = 'completed'
+        )`),
+        'transactionVolume'
+      ],
 
-    return queryOptions;
+      // ===============================
+      // USER VTU WALLET BALANCE
+      // ===============================
+      [
+        sequelize.literal(`(
+          SELECT COALESCE(vtuBalance, 0)
+          FROM wallets
+          WHERE wallets.userId = User.id
+          LIMIT 1
+        )`),
+        'vtuBalance'
+      ],
+
+      // ===============================
+      // TOTAL VTU VOLUME (COMPLETED)
+      // ===============================
+      [
+        sequelize.literal(`(
+          SELECT COALESCE(SUM(sellingPrice), 0)
+          FROM vtuTransactions
+          WHERE vtuTransactions.userId = User.id
+          AND vtuTransactions.status = 'success'
+        )`),
+        'vtuVolume'
+      ],
+
+      // ===============================
+      // TOTAL VTU PROFIT (OPTIONAL BUT VERY USEFUL)
+      // ===============================
+      [
+        sequelize.literal(`(
+          SELECT COALESCE(SUM(profit), 0)
+          FROM vtuTransactions
+          WHERE vtuTransactions.userId = User.id
+          AND vtuTransactions.status = 'success'
+        )`),
+        'vtuProfit'
+      ]
+    ]
+  };
+
+  return queryOptions;
 };
 
 module.exports = addTransactionAggregates;

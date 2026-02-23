@@ -95,6 +95,10 @@ class APIFeatures{
                 { field: 'ref', type: 'string' },
                 { field: 'description', type: 'string' }
             ],
+            VTUTransaction: [
+                { field: 'providerRef', type: 'string' },
+                { field: 'beneficiary', type: 'string' }
+            ],
             Giftcard: [
                 { field: 'cardName', type: 'string' },
             ],

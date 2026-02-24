@@ -180,20 +180,6 @@ exports.getStatsForAdmin = catchAsync(async (req, res, next) => {
       change: calcChange(currentStats.totalTransactionVolume, prevStats.totalTransactionVolume),
     },
     {
-      title: "Gift Card Volume",
-      total: `₦${(currentStats.giftcardVolume + prevStats.giftcardVolume).toLocaleString()}`,
-      currentValue: `₦${currentStats.giftcardVolume.toLocaleString()}`,
-      preValue: `₦${prevStats.giftcardVolume.toLocaleString()}`,
-      change: calcChange(currentStats.giftcardVolume, prevStats.giftcardVolume),
-    },
-    {
-      title: "Crypto Volume",
-      total: `₦${(currentStats.coinVolume + prevStats.coinVolume).toLocaleString()}`,
-      currentValue: `₦${currentStats.coinVolume.toLocaleString()}`,
-      preValue: `₦${prevStats.coinVolume.toLocaleString()}`,
-      change: calcChange(currentStats.coinVolume, prevStats.coinVolume),
-    },
-    {
       title: "VTU Volume",
       total: `₦${(currentStats.vtuVolume + prevStats.vtuVolume).toLocaleString()}`,
       currentValue: `₦${currentStats.vtuVolume.toLocaleString()}`,
@@ -207,6 +193,21 @@ exports.getStatsForAdmin = catchAsync(async (req, res, next) => {
       preValue: `₦${prevStats.vtuProfit.toLocaleString()}`,
       change: calcChange(currentStats.vtuProfit, prevStats.vtuProfit),
     },
+    {
+      title: "Gift Card Volume",
+      total: `₦${(currentStats.giftcardVolume + prevStats.giftcardVolume).toLocaleString()}`,
+      currentValue: `₦${currentStats.giftcardVolume.toLocaleString()}`,
+      preValue: `₦${prevStats.giftcardVolume.toLocaleString()}`,
+      change: calcChange(currentStats.giftcardVolume, prevStats.giftcardVolume),
+    },
+    {
+      title: "Crypto Volume",
+      total: `₦${(currentStats.coinVolume + prevStats.coinVolume).toLocaleString()}`,
+      currentValue: `₦${currentStats.coinVolume.toLocaleString()}`,
+      preValue: `₦${prevStats.coinVolume.toLocaleString()}`,
+      change: calcChange(currentStats.coinVolume, prevStats.coinVolume),
+    },
+
   ];
 
   const recentVtuTransactions = await getRecentVtuTransactions(req);
@@ -282,7 +283,7 @@ exports.getAdminChartData = catchAsync(async (req, res, next) => {
     raw: true,
   });
 
-  
+
 
   res.status(200).json({
     status: "success",

@@ -37,6 +37,7 @@ function applyMarkup(amount) {
 }
 
 
+
 exports.getDataPlans = catchAsync(async (req, res, next) => {
     try {
         const result = await axios.get(`api/plans?service=${req.query.network}`);

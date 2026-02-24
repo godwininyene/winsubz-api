@@ -9,9 +9,23 @@ const {
 
 
 function applyMarkup(amount) {
-    const RATE = 0.07;   // 7%
-    const MIN = 50;
-    const MAX = 250;
+    //Old Charge
+    // const RATE = 0.07;   // 7%
+    // const MIN = 50;
+    // const MAX = 250;
+
+    // let profit = Math.round(amount * RATE);
+
+    // if (profit < MIN) profit = MIN;
+    // if (profit > MAX) profit = MAX;
+
+    // const sellingPrice = amount + profit;
+    // // Round final price to nearest ₦50
+    // return Math.round(sellingPrice / 50) * 50;
+
+    const RATE = 0.03;   // 3%
+    const MIN = 30;
+    const MAX = 100;
 
     let profit = Math.round(amount * RATE);
 
@@ -19,11 +33,8 @@ function applyMarkup(amount) {
     if (profit > MAX) profit = MAX;
 
     const sellingPrice = amount + profit;
-
-    // Round final price to nearest ₦50
-    return Math.round(sellingPrice / 50) * 50;
+    return sellingPrice
 }
-
 
 
 exports.getDataPlans = catchAsync(async (req, res, next) => {

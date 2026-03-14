@@ -18,6 +18,10 @@ module.exports = (sequelize, DataTypes) => {
     static associate(models) {
       User.hasOne(models.Wallet, { foreignKey: 'userId', as: 'wallet' })
       User.hasMany(models.Transaction, { foreignKey: 'userId', as: 'transactions' })
+      User.hasOne(models.VirtualAccount, {
+        foreignKey: "userId",
+        as: "virtualAccount"
+      });
     }
   }
   User.init({

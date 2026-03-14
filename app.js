@@ -17,8 +17,10 @@ const electricityRouter = require('./routes/electricityRoutes')
 const cableRouter  = require('./routes/cableRoutes');
 const transactionRouter = require('./routes/transactionRoutes')
 const bankAccountRouter = require('./routes/bankAccountRoutes')
+const virtualAccountRouter = require('./routes/virtualAccountRoutes')
 const statsRouter = require('./routes/statsRoutes')
 const settingsRouter = require('./routes/settingsRoutes')
+const webhookRouter = require('./routes/webhookRoutes');
 
 
 
@@ -46,6 +48,7 @@ app.set('views', path.join(__dirname, 'views'));
 app.set('query parser', 'extended');
 
 // Body parsing
+app.use("/webhooks/monnify", express.raw({ type: "*/*" }));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -68,11 +71,13 @@ app.options(/.*/, cors({
 
 
 // Routes
+app.use('/webhooks', webhookRouter);
 app.use('/api/v1/users', userRouter);
 app.use('/api/v1/giftcards', giftcardRouter);
 app.use('/api/v1/coins', coinRouter);
 app.use('/api/v1/transactions', transactionRouter);
 app.use('/api/v1/bankAccounts', bankAccountRouter);
+app.use('/api/v1/virtual-accounts', virtualAccountRouter)
 app.use('/api/v1/stats', statsRouter);
 app.use('/api/v1/settings', settingsRouter)
 app.use('/api/v1/data', dataRouter)

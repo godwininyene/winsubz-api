@@ -2,6 +2,7 @@ const AppError = require("../utils/appError");
 const catchAsync = require("../utils/catchAsync");
 const { User, Wallet, Funding, sequelize } = require('./../models');
 const fs = require('fs')
+const crypto = require("crypto");
 
 exports.fundWallet = catchAsync(async (req, res, next) => {
     const wallet = await Wallet.findOne({ where: { userId: req.params.id } });
@@ -29,18 +30,23 @@ exports.fundWallet = catchAsync(async (req, res, next) => {
     })
 });
 
-
 exports.monnifyWebhook = catchAsync(async (req, res, next) => {
-    const crypto = require("crypto");
+    // Fixed VTU wallet funding charge
+    const VTU_CHARGE = 50;
 
+    // Get signature from Monnify headers
     const signature = req.headers["monnify-signature"];
 
+    // Convert raw buffer body to string
+    const rawBody = req.body.toString();
+
+    // Compute HMAC SHA512 hash to verify webhook authenticity
     const hash = crypto
         .createHmac("sha512", process.env.MONNIFY_SECRET_KEY)
-        .update(JSON.stringify(req.body))
+        .update(rawBody)
         .digest("hex");
 
-    // Verify webhook authenticity
+    // If signature mismatch, reject webhook
     if (signature !== hash) {
         return res.status(401).json({
             status: "fail",
@@ -50,26 +56,28 @@ exports.monnifyWebhook = catchAsync(async (req, res, next) => {
         });
     }
 
-    const event = JSON.parse(req.body);
+    // Parse webhook event from raw body
+    const event = JSON.parse(rawBody);
     const eventData = event.eventData;
-    // Only process successful payments 
+
+    // Only process successful transactions
     if (event.eventType !== "SUCCESSFUL_TRANSACTION") {
         return res.status(200).json({ status: "ignored" });
     }
 
-    fs.writeFileSync('./monnify-response.json', JSON.stringify(event))
-    
+    // Optional: log the webhook for debugging
+    fs.writeFileSync('./monnify-response.json', JSON.stringify(event));
+
+    // Extract transaction info
     const reference = eventData.transactionReference;
     const amount = eventData.amountPaid;
-    const accountReference = eventData.product.reference;
 
+    // Get account reference to determine user
+    const accountReference = eventData.product?.reference || eventData.productReference;
     const userId = accountReference.split("-")[1];
 
-    // Check if transaction already processed
-    const existingTransaction = await Funding.findOne({
-        where: { reference }
-    });
-
+    // Check if transaction has already been processed
+    const existingTransaction = await Funding.findOne({ where: { reference } });
     if (existingTransaction) {
         return res.status(200).json({
             status: "success",
@@ -77,46 +85,48 @@ exports.monnifyWebhook = catchAsync(async (req, res, next) => {
         });
     }
 
+    // Start database transaction
+    const t = await sequelize.transaction();
+
+    // Lock wallet row to prevent race conditions
     const wallet = await Wallet.findOne({
         where: { userId },
-        lock: true
+        transaction: t,
+        lock: t.LOCK.UPDATE
     });
 
     if (!wallet) {
         return next(new AppError("Wallet not found", "", 404));
     }
 
-    // DATABASE TRANSACTION STARTS HERE
-    const t = await sequelize.transaction();
-
     try {
-
-        // Credit wallet
-        wallet.vtuBalance += amount;
+        // Credit wallet after deducting VTU charge
+        const creditedAmount = amount - VTU_CHARGE;
+        wallet.vtuBalance += creditedAmount;
         await wallet.save({ transaction: t });
 
-        // Save funding record
+        // Save funding record including original amount, charge, and credited amount
         await Funding.create({
             reference,
             amount,
             status: "success",
             type: "deposit",
-            userId
+            userId,
+            charge: VTU_CHARGE,
+            creditedAmount
         }, { transaction: t });
 
-        // Commit transaction
+        // Commit DB transaction
         await t.commit();
 
+        // Return success response
         res.status(200).json({
             status: "success"
         });
 
     } catch (error) {
-
-        // Rollback if anything fails
+        // Rollback if any operation fails
         await t.rollback();
-
         return next(new AppError("Transaction processing failed", "", 500));
     }
-
 });

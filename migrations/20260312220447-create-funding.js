@@ -17,6 +17,12 @@ module.exports = {
       amount: {
         type: Sequelize.INTEGER
       },
+      charge: {
+        type: Sequelize.INTEGER
+      },
+      creditedAmount: {
+        type: Sequelize.INTEGER
+      },
       status: {
         type: Sequelize.STRING
       },

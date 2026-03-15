@@ -1,41 +1,63 @@
 extends baseEmail
 
 block content
-    strong Hi #{firstName},
-    
-    if type == 'account_approved'
-        h4 Congratulations! Account Approved
-        p Your account has been successfully reviewed and approved. You can now kindly 
-            a(href=`${url}`, target='_blank') Login to your dashboard
-            | , fund your account, and proceed to invest in our platform.
-        p
-        | Best Regards,
-        br
-        strong Customer Support Team.
-    
-    else if type == 'account_denied'
-        h4 Sorry! Account Denied
-        p Thank you for registering on our platform.
-        p Unfortunately, your account was reviewed but denied approval for certain reasons.
-        p Kindly contact our support team urgently to find out why.
-        p Our Support Team will also contact you as soon as possible regarding the disapproval reasons.
-        p
-        | Best Regards,
-        br
-        strong Customer Support Team.
-    
-    else if type == 'account_deactivated'
-        h4 Account Deactivated
-        p Your account has been deactivated. If you believe this is an error or have any questions, please contact our Support Team for further assistance.
-        p
-        | Best Regards,
-        br
-        strong Customer Support Team.
-    
-    else
-        h4 Notification
-        p There is an update regarding your account status. Please contact support for more information.
-        p
-        | Best Regards,
-        br
-        strong Customer Support Team.
+  div.email-header
+    div.thanks-message WELCOME TO WINSUBZ
+    div.verify-message We're glad to have you here
+
+  main.email-body
+    h2.greeting Hi #{firstName},
+
+    p
+      | I’m 
+      strong Godwin Inyene
+      | , the founder of Winsubz. I just wanted to personally reach out and say 
+      strong welcome onboard.
+
+    p
+      | I saw that you signed up recently, and honestly, it means a lot to me. 
+      | Not just because you joined, but because you're trusting us to help make your 
+      | digital payments simpler, faster, and more reliable.
+
+    p
+      | Winsubz was built to solve a real problem — the frustration of buying data, 
+      | paying bills, or recharging airtime without delays or inflated prices.
+      | Our goal is to give you a seamless experience whether you're topping up 
+      | for yourself, running a VTU business, or helping friends and family stay connected.
+
+    h3(style="margin-top:25px") Getting Started
+
+    p Here are a few simple steps to start using Winsubz:
+
+    ul
+      li Log in to your dashboard
+      li Generate your personal wallet funding account
+      li Transfer funds to the account to automatically credit your wallet
+      li Start buying cheap data, airtime, electricity tokens, and cable subscriptions instantly
+
+    p
+      | Once your wallet is funded, you can perform transactions instantly with some of the best VTU rates available.
+
+    table.btn.btn-primary(role='presentation', border='0', cellpadding='0', cellspacing='0')
+      tbody
+        tr
+          td(align='left')
+            table(role='presentation', border='0', cellpadding='0', cellspacing='0')
+              tbody
+                tr
+                  td
+                    a(href=`${url}`, target='_blank') Go to your dashboard
+
+    p(style="margin-top:20px")
+      | If you ever feel stuck, confused, or just want to say hi, I’d really love to hear from you. 
+      | Even if it’s something small, feel free to reach out — I read many of the messages myself.
+
+    p
+      | I also want you to know there’s a real person on the other side rooting for you.
+
+    p
+      | Warm regards,
+      br
+      strong Godwin Inyene
+      br
+      | Founder, Winsubz

@@ -13,7 +13,7 @@ const generateAccountId = async () => {
 
   while (exists) {
     const num = Math.floor(100 + Math.random() * 900);
-    code = `WZ${num}`;   // WZ234
+    code = `WS${num}`;   // WZ234
     exists = await User.findOne({ where: { accountId: code } });
   }
 
@@ -56,7 +56,7 @@ const createSendToken = (user, statusCode, req, res) => {
 };
 
 exports.signup = catchAsync(async (req, res, next) => {
-  //1. Create user
+  // 1. Create user
   const user = await User.create({
     firstName: req.body?.firstName,
     lastName: req.body?.lastName,
@@ -67,9 +67,21 @@ exports.signup = catchAsync(async (req, res, next) => {
     referralId: req.body?.referralId,
     accountId: await generateAccountId()
   });
-  //2. Create a wallet for the newly created user
+
+  // 2. Create wallet for the user
   await Wallet.create({ userId: user.id });
-  //3. Send token to user
+
+  // 3. Send welcome email (do not block signup if email fails)
+  try {
+    await new Email(
+      user,
+      `${process.env.FRONTEND_URL}/user/dashboard`,
+      ''
+    ).sendOnBoard();
+  } catch (error) {
+    console.log("Welcome email failed:", error);
+  }
+  // 4. Send JWT token
   createSendToken(user, 201, req, res);
 });
 
@@ -234,7 +246,7 @@ exports.forgotPassword = catchAsync(async (req, res, next) => {
 });
 
 
-exports.resetPassword = catchAsync(async (req, res, next) => {  
+exports.resetPassword = catchAsync(async (req, res, next) => {
   // 1) Get user base on token
   const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
   const user = await User.findOne({

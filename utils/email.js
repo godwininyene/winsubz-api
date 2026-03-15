@@ -42,6 +42,7 @@ module.exports = class Email {
             firstName: this.firstName,
             url: this.url,
             type: this.type,
+            subject,
             ...templateData
         })
         //2) Define email options
@@ -67,7 +68,7 @@ module.exports = class Email {
         await this.send('transaction', 'Transaction Notice', transactionData)
     }
     async sendOnBoard() {
-        await this.send("welcome", "Account Approval Status")
+        await this.send("welcome", "Welcome to Winsubz!")
     }
 
     async sendTransactionAdmin(transactionData) {

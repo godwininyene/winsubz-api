@@ -3,6 +3,8 @@ const {
   Model
 } = require('sequelize');
 const bcrypt = require('bcryptjs')
+const crypto = require('crypto');
+
 module.exports = (sequelize, DataTypes) => {
   class User extends Model {
     async correctPassword(candidatePassword, userPassword) {
@@ -15,6 +17,13 @@ module.exports = (sequelize, DataTypes) => {
         return changeTime > jwtTimeStamp;
       }
     }
+    createPasswordResetToken = function () {
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      this.passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+      this.passwordResetExpires = Date.now() + 15 * 60 * 1000;// Code valid for 15 minutes
+      return resetToken;
+    }
+
     static associate(models) {
       User.hasOne(models.Wallet, { foreignKey: 'userId', as: 'wallet' })
       User.hasMany(models.Transaction, { foreignKey: 'userId', as: 'transactions' })

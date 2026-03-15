@@ -5,13 +5,13 @@ const { convert } = require('html-to-text');
 module.exports = class Email {
     constructor(user, url, type) {
         this.to = user.email;
-        this.from = `Vico Exchange <${process.env.EMAIL_FROM}>`;
+        this.from = `Winsubz <${process.env.EMAIL_FROM}>`;
         this.firstName = user.firstName;
         this.url = url;
         this.type = type
     }
 
-    newTransport() {  
+    newTransport() {
         // if (process.env.NODE_ENV === 'production') {
         //     // Using Gmail service
         //     return nodemailer.createTransport({
@@ -72,5 +72,9 @@ module.exports = class Email {
 
     async sendTransactionAdmin(transactionData) {
         await this.send('transactionAdmin', 'Transaction Notice', transactionData)
+    }
+
+    async sendPasswordReset() {
+        await this.send('passwordReset', 'Your password reset token (valid for only 15 minutes)');
     }
 }

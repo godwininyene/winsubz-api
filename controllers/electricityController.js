@@ -1,5 +1,6 @@
 const catchAsync = require("../utils/catchAsync");
-const axios = require('../lib/axios');
+// const axios = require('../lib/axios');
+const axios = require('axios')
 const AppError = require('../utils/appError');
 const {
   VTUTransaction,
@@ -7,25 +8,6 @@ const {
   sequelize
 } = require("../models");
 
-const MIN_ELECTRICITY = {
-  'abuja-electric': 1000,
-  'eko-electric': 1000,
-  'ibadan-electric': 1000,
-  'ikeja-electric': 1000,
-  'jos-electric': 1000,
-  'kaduna-electric': 1000,
-  'kano-electric': 1000,
-  'portharcourt-electric': 1000,
-  'aba-electric': 1000,
-  'yola-electric': 1000,
-  'benin-electric': 1000,
-  'enugu-electric': 1000,
-  'ibedc-electric': 1000
-};
-
-function getMinElectricityAmount(serviceID) {
-  return MIN_ELECTRICITY[serviceID] || 500;
-}
 
 function applyElectricityMarkup(amount) {
   const RATE = 0.02;   // 2%
@@ -39,25 +21,130 @@ function applyElectricityMarkup(amount) {
   return amount + profit;
 }
 
-exports.buyElectricity = catchAsync(async (req, res, next) => {
-  const { serviceID, phone, customerID, amount, variation_code, requestId } = req.body;
 
-  if (!requestId) return next(new AppError("Request ID is required", "", 400));
-  if (!serviceID || !phone || !customerID || !amount || !variation_code) {
-    return next(new AppError("serviceID, phone, customerID, variation code and amount are required", "", 400));
+exports.getPlans = catchAsync(async (req, res, next) => {
+  try {
+    const response = await axios.get(`${process.env.PEYFLEX_BASE_URL}/api/electricity/plans/?identifier=electricity`);
+    res.status(200).json({
+      status: "success",
+      data: {
+        plans: response.data.plans
+      }
+    })
+  } catch (error) {
+    if (error.response) {
+      const message =
+        error.response.data?.responseMessage ||
+        "Unable to fetch electricity plans";
+
+      return next(new AppError(message, "", error.response.status));
+    }
+    // Handle network errors
+    return next(new AppError("Electricity service unavailable", "", 500));
+  }
+
+})
+
+exports.verifyMeter = catchAsync(async (req, res, next) => {
+
+  const { meter, plan, type } = req.body;
+
+  if (!meter || !plan || !type) {
+    return next(
+      new AppError(
+        "Please provide meter number, electricity plan, and meter type",
+        "",
+        400
+      )
+    );
+  }
+
+  try {
+
+    const response = await axios.get(
+      `${process.env.PEYFLEX_BASE_URL}/api/electricity/verify/`,
+      {
+        params: {
+          identifier: "electricity",
+          meter,
+          plan,
+          type
+        },
+        headers: {
+          Authorization: `Token ${process.env.PEYFLEX_API_KEY}`
+        }
+      }
+    );
+
+    const data = response.data;
+
+    if (!data.customer_name || data.customer_name === "Unknown") {
+      return next(new AppError("Invalid meter number.", "", 400));
+    }
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        customer: data.customer_name
+      }
+    });
+
+  } catch (error) {
+
+    if (error.response) {
+
+      const message =
+        error.response.data?.responseMessage ||
+        error.response.data?.message ||
+        "Unable to verify meter";
+
+      return next(
+        new AppError(message, "", error.response.status)
+      );
+    }
+
+    // Network error
+    return next(
+      new AppError(
+        "Meter verification service unavailable",
+        "",
+        503
+      )
+    );
+  }
+
+});
+
+
+
+exports.buyElectricity = catchAsync(async (req, res, next) => {
+
+  const { meter, plan, amount, type, phone } = req.body;
+
+  if (!meter || !plan || !amount || !type || !phone) {
+    return next(
+      new AppError(
+        "meter, plan, amount, type and phone are required",
+        "",
+        400
+      )
+    );
   }
 
   const faceValue = Number(amount);
-  const minAmount = getMinElectricityAmount(serviceID);
 
-  if (!Number.isFinite(faceValue) || faceValue < minAmount) {
-    return next(new AppError(`Minimum amount for this service is ₦${minAmount}`, "", 400));
+  if (!Number.isFinite(faceValue) || faceValue <= 0) {
+    return next(new AppError("Invalid electricity amount", "", 400));
   }
 
-  const sellingPrice = applyElectricityMarkup(faceValue);
+  // const sellingPrice = applyElectricityMarkup(faceValue);
+  const sellingPrice = faceValue;
 
-  // 🔁 Idempotency
+  const requestId = `EL-${Date.now()}-${req.user.id}`;
+
+  // 🔁 Idempotency check
   const existingTx = await VTUTransaction.findOne({ where: { requestId } });
+
   if (existingTx) {
     return res.status(200).json({
       status: "success",
@@ -67,19 +154,19 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
           amount: existingTx.sellingPrice,
           status: existingTx.status,
           beneficiary: existingTx.beneficiary,
-          ref: existingTx.providerRef || 'N/A',
+          ref: existingTx.providerRef || "N/A",
           createdAt: existingTx.createdAt
         }
       }
     });
   }
 
-  // 🔐 Anti-double-spend
   const t = await sequelize.transaction();
   let wallet;
   let tx;
 
   try {
+
     wallet = await Wallet.findOne({
       where: { userId: req.user.id },
       lock: t.LOCK.UPDATE,
@@ -97,92 +184,113 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
     }
 
     const initialBalance = wallet.vtuBalance;
+
     wallet.vtuBalance -= sellingPrice;
     await wallet.save({ transaction: t });
 
     tx = await VTUTransaction.create({
       userId: req.user.id,
-      type: 'electricity',
-      provider: 'gsubz',
-      serviceId: serviceID,
-      serviceName: serviceID.replace('-', ' ').toUpperCase(),
-      beneficiary: customerID,
-      faceValue: Number(amount),      // ✅ what user is buying
-      costPrice: Number(amount),        // temp, will be replaced by actualCost
-      sellingPrice,                    // ✅ what user pays
+      type: "electricity",
+      provider: "peyflex",
+      serviceId: "electricity",
+      serviceName: plan.replace("-", " ").toUpperCase(),
+      beneficiary: meter,
+
+      faceValue: faceValue,
+      costPrice: faceValue,
+      sellingPrice,
+
       profit: 0,
       amountPaid: null,
       providerDiscount: 0,
       providerRef: null,
+      token: null,
+
       requestId,
-      status: 'pending',
+      status: "pending",
       providerStatus: null,
+
       initialBalance,
       finalBalance: null
+
     }, { transaction: t });
 
     await t.commit();
+
   } catch (err) {
     await t.rollback();
     throw err;
   }
 
-  // 🌐 Call provider
+
   let providerResponse;
   let success = false;
+  let data = {};
 
   try {
-    const formData = new FormData();
-    formData.append('serviceID', serviceID);
-    formData.append('api', process.env.GSUBZ_API_KEY);
-    formData.append('phone', phone);
-    formData.append('customerID', customerID);
-    formData.append('amount', String(faceValue));
-    if (variation_code) formData.append('variation_code', variation_code);
-    formData.append('requestID', requestId);
 
-    providerResponse = await axios.post(`api/pay/`, formData, {
-      headers: { Authorization: `Bearer ${process.env.GSUBZ_API_KEY}` }
-    });
+    const payload = {
+      identifier: "electricity",
+      meter,
+      plan,
+      amount: String(faceValue),
+      type,
+      phone
+    };
 
-    const providerCode = String(providerResponse.data?.code);
-    const providerStatus = String(providerResponse.data?.status || '').toLowerCase();
+    providerResponse = await axios.post(
+      "https://client.peyflex.com.ng/api/electricity/subscribe/",
+      payload,
+      {
+        headers: {
+          Authorization: `Token ${process.env.PEYFLEX_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
 
-    success =
-      providerCode === "200" &&
-      (providerStatus === "successful" || providerStatus === "transaction_successful");
+    data = providerResponse.data;
 
-    const actualCost = Number(providerResponse.data?.amountPaid || faceValue);
-    const providerDiscount = Math.max(faceValue - actualCost, 0);
-    const realProfit = sellingPrice - actualCost;
-
-    await tx.update({
-      status: success ? 'success' : 'failed',
-      providerStatus: providerResponse.data?.status || null,
-      providerRef: providerResponse.data?.transactionID || null,
-      token: providerResponse.data?.token || providerResponse.data?.api_response || null,
-      costPrice: Math.round(actualCost),// what provider charged
-      amountPaid: actualCost,
-      profit: Math.round(realProfit),
-      providerDiscount: Math.round(providerDiscount),
-      finalBalance: wallet.vtuBalance
-    });
-
-    if (!success) {
-      wallet.vtuBalance += sellingPrice;
-      await wallet.save();
-      await tx.update({ finalBalance: wallet.vtuBalance });
-    }
+    console.log('PEYFLEX RESPONSE', providerResponse);
+    
 
   } catch (err) {
+
+    // Peyflex returns error responses inside err.response
+    data = err.response?.data || {};
+    providerResponse = err.response;
+
+
+  }
+
+  success = data.status === "SUCCESSFUL" || data.status === "SUCCESS";
+
+  const actualCost = Number(data.amount || faceValue);
+  const providerDiscount = Math.max(faceValue - actualCost, 0);
+  const realProfit = sellingPrice - actualCost;
+
+  if (!success) {
     wallet.vtuBalance += sellingPrice;
     await wallet.save();
-    await tx.update({
-      status: 'failed',
-      finalBalance: wallet.vtuBalance
-    });
-    throw err;
   }
+
+  await tx.update({
+
+    status: success ? "success" : "failed",
+    providerStatus: data.status || null,
+    providerRef: data.reference || null,
+    token: data.token || null,
+
+    costPrice: Math.round(actualCost),
+    amountPaid: actualCost,
+
+    profit: Math.round(realProfit),
+    providerDiscount: Math.round(providerDiscount),
+
+    finalBalance: wallet.vtuBalance
+
+  });
+
 
   const refreshedTx = await VTUTransaction.findByPk(tx.id);
 
@@ -192,25 +300,35 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
     status: refreshedTx.status,
     beneficiary: refreshedTx.beneficiary,
     token: refreshedTx.token || null,
-    ref: refreshedTx.providerRef || 'N/A',
+    ref: refreshedTx.providerRef || "N/A",
     createdAt: refreshedTx.createdAt
   };
 
+
   if (success) {
-    return res.status(200).json({ status: "success", data: { transaction } });
+    return res.status(200).json({
+      status: "success",
+      data: { transaction }
+    });
   }
 
-  if (providerResponse?.data?.description === 'INSUFFICIENT_BALANCE') {
-    return next(new AppError(
-      "Service temporarily unavailable. Please try again later.",
-      "Provider wallet low",
-      503
-    ));
+
+  // 🚫 Hide provider wallet balance issue
+  if (data?.message?.toLowerCase().includes("wallet")) {
+    return next(
+      new AppError(
+        "Service temporarily unavailable. Please try again later.",
+        "Provider wallet low",
+        503
+      )
+    );
   }
+
 
   return res.status(400).json({
     status: "fail",
-    message: providerResponse?.data?.description || "Electricity purchase failed",
+    message: data?.message || "Electricity purchase failed",
     data: { transaction }
   });
+
 });

@@ -60,12 +60,31 @@ app.use(xss());
 app.use(hpp());
 
 // CORS (after security middleware)
+// app.use(cors({
+//     origin: process.env.FRONTEND_URL,
+//     credentials: true
+// }));
+// app.options(/.*/, cors({
+//     origin: process.env.FRONTEND_URL,
+//     credentials: true
+// }));
+
+const allowedOrigins = [
+    "https://winsubz.com",
+    "https://www.winsubz.com",
+    "http://winsubz.com",
+    "http://www.winsubz.com",
+    process.env.FRONTEND_URL,
+
+];
+
 app.use(cors({
-    origin: process.env.FRONTEND_URL,
+    origin: allowedOrigins,
     credentials: true
 }));
+
 app.options(/.*/, cors({
-    origin: process.env.FRONTEND_URL,
+    origin: allowedOrigins,
     credentials: true
 }));
 

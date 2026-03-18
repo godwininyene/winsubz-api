@@ -188,6 +188,7 @@ exports.buyAirtime = catchAsync(async (req, res, next) => {
     service: refreshedTx.serviceName,
     amount: refreshedTx.sellingPrice,
     status: refreshedTx.status,
+    token:refreshedTx.token,
     beneficiary: refreshedTx.beneficiary,
     ref: refreshedTx.providerRef || 'N/A',
     createdAt: refreshedTx.createdAt

@@ -17,6 +17,8 @@ router.use(authController.protect)
 router.patch("/updateMe", uploadProfilePhoto, userController.updateMe);
 router.patch('/updateMyPassword', authController.updatePassword);
 router.get('/me', userController.getMe, userController.getUser)
+router.get('/my-referrals', userController.getMyReferrals)
+router.post('/withdraw-referral', userController.withdrawReferralBalance)
 
 //Restrict all routes below to admin only
 router.use(authController.restrictTo("admin"));

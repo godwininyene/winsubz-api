@@ -308,7 +308,7 @@ exports.getStatsForUser = catchAsync(async (req, res, next) => {
 
   const wallet = await Wallet.findOne({
     where: { userId },
-    attributes: ["totalBalance", "cryptoBalance", "giftCardBalance", "vtuBalance"],
+    attributes: ["totalBalance", "cryptoBalance", "giftCardBalance", "vtuBalance", "referralBalance"],
   });
 
   const walletData = wallet
@@ -347,11 +347,25 @@ exports.getStatsForUser = catchAsync(async (req, res, next) => {
       maximumFractionDigits: 2,
     })}`;
 
+  const totalReferrals = await User.count({
+    where: {
+      referralId: req.user.accountId
+    }
+  });
+
   const stats = [
     { title: "Total Assets", value: formatCurrency(walletData.totalBalance) },
     { title: "Crypto Holdings", value: formatCurrency(walletData.cryptoBalance) },
     { title: "Gift Card Balance", value: formatCurrency(walletData.giftCardBalance) },
     { title: "VTU Wallet Balance", value: formatCurrency(walletData.vtuBalance) },
+    {
+      title: "Referral Earnings",
+      value: formatCurrency(walletData.referralBalance || 0)
+    },
+    {
+      title: "Total Referrals",
+      value: totalReferrals.toLocaleString()
+    },
     {
       title: "Monthly Growth",
       value: `${monthlyGrowth >= 0 ? "+" : ""}${formatCurrency(monthlyGrowth)}`,

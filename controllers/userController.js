@@ -1,11 +1,10 @@
 const catchAsync = require('./../utils/catchAsync');
 const AppError = require('./../utils/appError');
-const{User} = require('./../models');
+const{User, Wallet, sequelize} = require('./../models');
 const APIFeatures = require('../utils/apiFeatures');
 const generatePaginationMeta = require('../utils/pagination');
 const addTransactionAggregates = require('../utils/addTransactionAggregates');
 const Email = require('../utils/email');
-
 const filterBody = (obj, ...allowedFields)=>{
     const newObj = {};
     if(obj){
@@ -161,4 +160,85 @@ exports.updateStatus = catchAsync(async (req, res, next) => {
       new AppError('There was a problem sending the email. Please try again later!', '', 500)
     );
   }
+});
+
+exports.getMyReferrals = catchAsync(async (req, res, next) => {
+  const userId = req.user.id;
+
+  const [referrals, wallet] = await Promise.all([
+    User.findAll({
+      where: { referralId: req.user.accountId },
+      attributes: ["firstName", "lastName", "photo", "createdAt"],
+      order: [["createdAt", "DESC"]],
+    }),
+
+    Wallet.findOne({
+      where: { userId },
+      attributes: ["referralBalance"],
+    }),
+  ]);
+
+  res.status(200).json({
+    status: "success",
+    data: {
+      total: referrals.length,
+      referralBalance: wallet?.referralBalance || 0,
+      referrals,
+    },
+  });
+});
+
+
+
+exports.withdrawReferralBalance = catchAsync(async (req, res, next) => {
+  const { amount } = req.body;
+  const userId = req.user.id;
+
+  // 🔒 1. Validate amount
+  const withdrawalAmount = Number(amount);
+
+  if (!withdrawalAmount || withdrawalAmount <= 0) {
+    return next(new AppError("Please provide a valid withdrawal amount", '', 400));
+  }
+
+  // Optional: enforce minimum withdrawal
+  // if (withdrawalAmount < 100) {
+  //   return next(new AppError("Minimum withdrawal is ₦100", 400));
+  // }
+
+  // 🔥 Use transaction for safety
+  const result = await sequelize.transaction(async (t) => {
+    // 🔍 2. Get wallet
+    const wallet = await Wallet.findOne({
+      where: { userId },
+      transaction: t,
+      lock: t.LOCK.UPDATE, // 🔒 prevents race condition
+    });
+
+    if (!wallet) {
+      throw new AppError("Wallet not found", 404);
+    }
+
+    // ❌ 3. Check balance
+    if (wallet.referralBalance < withdrawalAmount) {
+      throw new AppError("Insufficient referral balance", '', 400);
+    }
+
+    // 🔄 4. Move funds
+    wallet.referralBalance -= withdrawalAmount;
+    wallet.vtuBalance += withdrawalAmount;
+
+    await wallet.save({ transaction: t });
+
+    return wallet;
+  });
+
+  res.status(200).json({
+    status: "success",
+    message: "Referral earnings successfully moved to VTU balance",
+    data: {
+      referralBalance: result.referralBalance,
+      vtuBalance: result.vtuBalance,
+    },
+  });
 });

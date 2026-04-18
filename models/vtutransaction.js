@@ -175,13 +175,23 @@ module.exports = (sequelize, DataTypes) => {
       }
     },
 
+    providerRequestId: {
+      type: DataTypes.STRING,
+      unique: true,
+      allowNull: false,
+      validate: {
+        notNull: { msg: 'Provider request id is required' },
+        notEmpty: { msg: 'Provider request id cannot be empty' }
+      }
+    },
+
     status: {
-      type: DataTypes.ENUM('success', 'failed', 'pending'),
+      type: DataTypes.ENUM('success', 'failed', 'pending', 'failed_manual_review'),
       allowNull: false,
       defaultValue: 'pending',
       validate: {
         isIn: {
-          args: [['success', 'failed', 'pending']],
+          args: [['success', 'failed', 'pending', 'failed_manual_review']],
           msg: 'Status must be success, failed, or pending'
         }
       }
@@ -210,6 +220,15 @@ module.exports = (sequelize, DataTypes) => {
 
     token: {
       type: DataTypes.STRING,
+      allowNull: true
+    },
+
+    verificationAttempts: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0
+    },
+    lastVerifiedAt: {
+      type: DataTypes.DATE,
       allowNull: true
     }
 

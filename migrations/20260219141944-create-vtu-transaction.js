@@ -100,8 +100,14 @@ module.exports = {
         allowNull: false
       },
 
+      providerRequestId: {
+        type: Sequelize.STRING,
+        unique: true,
+        allowNull: false
+      },
+
       status: {
-        type: Sequelize.ENUM('success', 'failed', 'pending'),
+        type: Sequelize.ENUM('success', 'failed', 'pending', 'failed_manual_review'),
         allowNull: false,
         defaultValue: 'pending',
       },
@@ -123,6 +129,15 @@ module.exports = {
 
       token: {
         type: Sequelize.STRING,
+        allowNull: true
+      },
+
+      verificationAttempts: {
+        type: Sequelize.INTEGER,
+        defaultValue: 0
+      },
+      lastVerifiedAt: {
+        type: Sequelize.DATE,
         allowNull: true
       },
 

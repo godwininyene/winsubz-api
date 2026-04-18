@@ -22,6 +22,10 @@ const statsRouter = require('./routes/statsRoutes')
 const settingsRouter = require('./routes/settingsRoutes')
 const webhookRouter = require('./routes/webhookRoutes');
 
+const startVerificationCron = require('./cron/verifyTransactions');
+
+startVerificationCron();
+
 
 
 const AppError = require('./utils/appError');

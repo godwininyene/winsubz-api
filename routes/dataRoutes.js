@@ -8,5 +8,6 @@ router.use(authController.protect);
 
 router.route('/plans').get(dataController.getDataPlans)
 router.route('/purchase').post(dataController.buyData)
+router.route('/verify/:requestId').post(dataController.verifyTransaction)
 
 module.exports = router

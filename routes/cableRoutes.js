@@ -7,6 +7,7 @@ const authController = require('./../controllers/authController');
 // Apply protect middleware to all routes
 router.use(authController.protect);
 router.route('/plans').get(cableController.getDataPlans)
-router.route('/purchase').post(cableController.buyCableSub)
+router.route('/verify-card').post(cableController.verifyCableCard)
+router.route('/subscribe').post(cableController.buyCableSub)
 
 module.exports = router

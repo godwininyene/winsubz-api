@@ -39,11 +39,11 @@ exports.buyAirtime = catchAsync(async (req, res, next) => {
     return next(new AppError("Airtime amount should not be less than N100", "", 400));
   }
 
-   // ✅ Generate providerRequestId (truncate UUID safely)
-    const providerRequestId = requestId.split('-').slice(0, 4).join('-');
+  // ✅ Generate providerRequestId (truncate UUID safely)
+  const providerRequestId = requestId.split('-').slice(0, 4).join('-');
 
   // const sellingPrice = applyAirtimeMarkup(faceValue);
-   const sellingPrice = faceValue;
+  const sellingPrice = faceValue;
 
   // 🔁 Idempotency
   const existingTx = await VTUTransaction.findOne({ where: { requestId } });
@@ -63,7 +63,7 @@ exports.buyAirtime = catchAsync(async (req, res, next) => {
     });
   }
 
-  
+
 
   // 🔐 Anti-double-spend
   const t = await sequelize.transaction();
@@ -144,7 +144,7 @@ exports.buyAirtime = catchAsync(async (req, res, next) => {
       maxBodyLength: Infinity
     });
 
-    // console.log('PROVIDER RESPONSE', providerResponse);
+    console.log('PROVIDER RESPONSE', providerResponse);
 
     const providerCode = String(providerResponse.data?.code);
     const providerStatus = String(providerResponse.data?.status || '').toLowerCase();
@@ -153,9 +153,14 @@ exports.buyAirtime = catchAsync(async (req, res, next) => {
       providerCode === "200" &&
       (providerStatus === "successful" || providerStatus === "transaction_successful");
 
+    // const actualCost = Number(providerResponse.data?.amountPaid || faceValue);
+    // const providerDiscount = Math.max(faceValue - actualCost, 0);
+    // const realProfit = sellingPrice - actualCost;
+
     const actualCost = Number(providerResponse.data?.amountPaid || faceValue);
-    const providerDiscount = Math.max(faceValue - actualCost, 0);
-    const realProfit = sellingPrice - actualCost;
+    const roundedCost = Math.round(actualCost);
+    const providerDiscount = Math.max(faceValue - roundedCost, 0);
+    const realProfit = sellingPrice - roundedCost;
 
     // 🔁 Refund on failure
     if (!success) {
@@ -168,9 +173,12 @@ exports.buyAirtime = catchAsync(async (req, res, next) => {
       providerStatus: providerResponse.data?.status || null,
       providerRef: providerResponse.data?.transactionID || null,
       token: providerResponse.data?.api_response || null,
-      costPrice: Math.round(actualCost), // what provider charged
-      amountPaid: actualCost,
-      profit: Math.round(realProfit),
+      // costPrice: Math.round(actualCost), // what provider charged
+      // amountPaid: actualCost,
+      // profit: Math.round(realProfit),
+      costPrice: roundedCost,          // ✅ use rounded
+      amountPaid: actualCost,          // keep decimal for analytics
+      profit: realProfit,              // ✅ matches validator
       providerDiscount: Math.round(providerDiscount),
       finalBalance: wallet.vtuBalance     // ✅ true final balance
     });

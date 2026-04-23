@@ -186,12 +186,12 @@ module.exports = (sequelize, DataTypes) => {
     },
 
     status: {
-      type: DataTypes.ENUM('success', 'failed', 'pending', 'failed_manual_review'),
+      type: DataTypes.ENUM('success', 'failed', 'pending', 'reversed', 'failed_manual_review'),
       allowNull: false,
       defaultValue: 'pending',
       validate: {
         isIn: {
-          args: [['success', 'failed', 'pending', 'failed_manual_review']],
+          args: [['success', 'failed', 'pending', 'reversed', 'failed_manual_review']],
           msg: 'Status must be success, failed, or pending'
         }
       }

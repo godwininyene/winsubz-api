@@ -107,7 +107,7 @@ module.exports = {
       },
 
       status: {
-        type: Sequelize.ENUM('success', 'failed', 'pending', 'failed_manual_review'),
+        type: Sequelize.ENUM('success', 'failed', 'pending', 'reversed', 'failed_manual_review'),
         allowNull: false,
         defaultValue: 'pending',
       },

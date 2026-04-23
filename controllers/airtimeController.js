@@ -39,6 +39,9 @@ exports.buyAirtime = catchAsync(async (req, res, next) => {
     return next(new AppError("Airtime amount should not be less than N100", "", 400));
   }
 
+   // ✅ Generate providerRequestId (truncate UUID safely)
+    const providerRequestId = requestId.split('-').slice(0, 4).join('-');
+
   // const sellingPrice = applyAirtimeMarkup(faceValue);
    const sellingPrice = faceValue;
 
@@ -59,6 +62,8 @@ exports.buyAirtime = catchAsync(async (req, res, next) => {
       }
     });
   }
+
+  
 
   // 🔐 Anti-double-spend
   const t = await sequelize.transaction();
@@ -104,6 +109,7 @@ exports.buyAirtime = catchAsync(async (req, res, next) => {
       providerDiscount: 0,
       providerRef: null,
       requestId,
+      providerRequestId,
       status: 'pending',
       providerStatus: null,
       initialBalance,
@@ -123,6 +129,7 @@ exports.buyAirtime = catchAsync(async (req, res, next) => {
   try {
     const formData = new FormData();
     formData.append('serviceID', serviceID);
+    formData.append("requestID", providerRequestId); // ✅ USE SHORT ONE
     formData.append('phone', phone);
     formData.append('api', process.env.GSUBZ_API_KEY);
     formData.append('amount', String(faceValue));

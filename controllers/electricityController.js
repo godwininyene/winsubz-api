@@ -141,6 +141,8 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
   const sellingPrice = faceValue;
 
   const requestId = `EL-${Date.now()}-${req.user.id}`;
+   // ✅ Generate providerRequestId (truncate UUID safely)
+  const providerRequestId = requestId.split('-').slice(0, 4).join('-');
 
   // 🔁 Idempotency check
   const existingTx = await VTUTransaction.findOne({ where: { requestId } });
@@ -207,6 +209,7 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
       token: null,
 
       requestId,
+      providerRequestId,
       status: "pending",
       providerStatus: null,
 

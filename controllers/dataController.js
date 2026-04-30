@@ -5,7 +5,7 @@ const normalizeProviderResponse = require('./../utils/normalizeProviderResponse'
 const {
     VTUTransaction,
     Wallet,
-    sequelize, 
+    sequelize,
     User
 } = require("../models");
 
@@ -221,15 +221,16 @@ exports.buyData = catchAsync(async (req, res, next) => {
 
         const actualCost = Number(providerResponse.data?.amountPaid || faceValue);
         const providerDiscount = Math.max(faceValue - actualCost, 0);
-        const realProfit = sellingPrice - actualCost;
+        const roundedCost = Math.round(actualCost);
+        const realProfit = sellingPrice - roundedCost;
 
         await tx.update({
             status,
             providerStatus: normalizedStatus,
             providerRef,
-            costPrice: Math.round(actualCost),
+            costPrice: roundedCost,
             amountPaid: actualCost,
-            profit: Math.round(realProfit),
+            profit: realProfit,
             providerDiscount: Math.round(providerDiscount),
             finalBalance: wallet.vtuBalance
         });

@@ -230,6 +230,10 @@ module.exports = (sequelize, DataTypes) => {
     lastVerifiedAt: {
       type: DataTypes.DATE,
       allowNull: true
+    },
+    isRefunded: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
     }
 
   }, {

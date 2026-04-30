@@ -140,6 +140,10 @@ module.exports = {
         type: Sequelize.DATE,
         allowNull: true
       },
+      isRefunded: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: false
+      },
 
       createdAt: {
         allowNull: false,

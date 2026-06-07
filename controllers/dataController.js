@@ -10,56 +10,86 @@ const {
 } = require("../models");
 
 
+// function applyMarkup(amount) {
+//     const RATE = 0.03;   // 3%
+//     const MIN = 30;
+//     const MAX = 100;
+
+//     let profit = Math.round(amount * RATE);
+
+//     if (profit < MIN) profit = MIN;
+//     if (profit > MAX) profit = MAX;
+
+//     const sellingPrice = amount + profit;
+//     return sellingPrice
+// }
+
 function applyMarkup(amount) {
-    //Old Charge
-    // const RATE = 0.07;   // 7%
-    // const MIN = 50;
-    // const MAX = 250;
-
-    // let profit = Math.round(amount * RATE);
-
-    // if (profit < MIN) profit = MIN;
-    // if (profit > MAX) profit = MAX;
-
-    // const sellingPrice = amount + profit;
-    // // Round final price to nearest ₦50
-    // return Math.round(sellingPrice / 50) * 50;
-
-    const RATE = 0.03;   // 3%
+    const RATE = 0.03; // 3%
     const MIN = 30;
     const MAX = 100;
 
     let profit = Math.round(amount * RATE);
 
+    // Apply min/max rules
     if (profit < MIN) profit = MIN;
     if (profit > MAX) profit = MAX;
 
-    const sellingPrice = amount + profit;
-    return sellingPrice
-}
+    // 🎉 Promo configuration
+    const promoEnabled =
+        process.env.DATA_PROMO_ENABLED === "true";
 
+    const promoStart = process.env.DATA_PROMO_START
+        ? new Date(process.env.DATA_PROMO_START)
+        : null;
+
+    const promoEnd = process.env.DATA_PROMO_END
+        ? new Date(process.env.DATA_PROMO_END)
+        : null;
+
+    const now = new Date();
+
+    // During promo, remove our markup completely
+    if (
+        promoEnabled &&
+        promoStart &&
+        promoEnd &&
+        now >= promoStart &&
+        now <= promoEnd
+    ) {
+        profit = 0;
+    }
+
+    return amount + profit;
+}
 
 
 exports.getDataPlans = catchAsync(async (req, res, next) => {
     try {
         const result = await axios.get(`api/plans?service=${req.query.network}`);
         const plans = result.data.plans;
-        const formattedPlans = plans.map(plan => {
-            return {
-                serviceId: req.query.network,
-                plan: plan.value,
-                provider_amount: parseInt(plan.price),
-                amount: applyMarkup(parseInt(plan.price)),
-                label: plan.displayName
-            };
-        });
-        res.status(200).json({
-            status: "success",
-            data: {
-                network: result.data.network,
-                plans: formattedPlans
-            }
-        });
+
+        if (plans) {
+            const formattedPlans = plans.map(plan => {
+                return {
+                    serviceId: req.query.network,
+                    plan: plan.value,
+                    provider_amount: parseInt(plan.price),
+                    amount: applyMarkup(parseInt(plan.price)),
+                    label: plan.displayName
+                };
+            });
+            res.status(200).json({
+                status: "success",
+                data: {
+                    network: result.data.network,
+                    plans: formattedPlans
+                }
+            });
+        } else {
+            return next(new AppError('No plans available please try again later.', '', 404))
+        }
+
     } catch (err) {
         if (err.response) {
             return next(

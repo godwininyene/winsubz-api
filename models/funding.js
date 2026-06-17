@@ -15,6 +15,7 @@ module.exports = (sequelize, DataTypes) => {
   }
   Funding.init({
     reference: DataTypes.STRING,
+    paymentReference:DataTypes.STRING,
     amount: DataTypes.INTEGER,
     status: DataTypes.STRING,
     type: DataTypes.STRING,

@@ -21,6 +21,7 @@ const virtualAccountRouter = require('./routes/virtualAccountRoutes')
 const statsRouter = require('./routes/statsRoutes')
 const settingsRouter = require('./routes/settingsRoutes')
 const webhookRouter = require('./routes/webhookRoutes');
+const paymentRouter = require('./routes/paymentRoutes');
 
 const startVerificationCron = require('./cron/verifyTransactions');
 
@@ -95,6 +96,7 @@ app.options(/.*/, cors({
 
 // Routes
 app.use('/webhooks', webhookRouter);
+app.use('/api/v1/payments', paymentRouter);
 app.use('/api/v1/users', userRouter);
 app.use('/api/v1/giftcards', giftcardRouter);
 app.use('/api/v1/coins', coinRouter);

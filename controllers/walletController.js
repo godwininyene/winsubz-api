@@ -30,6 +30,7 @@ exports.fundWallet = catchAsync(async (req, res, next) => {
     })
 });
 
+
 exports.monnifyWebhook = catchAsync(async (req, res, next) => {
     // Fixed VTU wallet funding charge
     const VTU_CHARGE = 50;
@@ -68,65 +69,139 @@ exports.monnifyWebhook = catchAsync(async (req, res, next) => {
     // Optional: log the webhook for debugging
     fs.writeFileSync('./monnify-response.json', JSON.stringify(event));
 
-    // Extract transaction info
-    const reference = eventData.transactionReference;
-    const amount = eventData.amountPaid;
+    // 2. Extract Data Safely
+    const reference = eventData.transactionReference; // Monnify Master Ref
+    const paymentReference = eventData.paymentReference; // Unique session ref
+    const amountPaid = Number(eventData.amountPaid);
 
-    // Get account reference to determine user
-    const accountReference = eventData.product?.reference || eventData.productReference;
-    const userId = accountReference.split("-")[1];
+    let userId;
+    let isCheckout = false;
 
-    // Check if transaction has already been processed
-    const existingTransaction = await Funding.findOne({ where: { reference } });
-    if (existingTransaction) {
-        return res.status(200).json({
-            status: "success",
-            message: "Transaction already processed"
-        });
-    }
-
-    // Start database transaction
-    const t = await sequelize.transaction();
-
-    // Lock wallet row to prevent race conditions
-    const wallet = await Wallet.findOne({
-        where: { userId },
-        transaction: t,
-        lock: t.LOCK.UPDATE
-    });
-
-    if (!wallet) {
-        return next(new AppError("Wallet not found", "", 404));
-    }
-
+    // =========================================================================
+    // GLOBAL TRY-CATCH ZONE: Captures all DB and parsing anomalies cleanly
+    // =========================================================================
     try {
-        // Credit wallet after deducting VTU charge
-        const creditedAmount = amount - VTU_CHARGE;
-        wallet.vtuBalance += creditedAmount;
-        await wallet.save({ transaction: t });
+        // 3. Determine Route Source (Checkout vs Reserved Account Transfer)
+        if (paymentReference && paymentReference.startsWith("WSR-")) {
+            // Source: Checkout (Card/USSD/Inline Transfer)
+            const refParts = paymentReference.split("-");
+            userId = refParts[refParts.length - 1]; // Safely extracts the last segment (e.g., "16")
+            isCheckout = true;
+        } else {
+            // Source: Dedicated Virtual Bank Account Transfer
+            const accountReference = eventData.product?.reference || eventData.productReference;
+            if (!accountReference) {
+                return res.status(400).json({ status: "fail", message: "No identifiable transaction reference mappings" });
+            }
+            userId = accountReference.split("-")[1];
+        }
 
-        // Save funding record including original amount, charge, and credited amount
-        await Funding.create({
-            reference,
-            amount,
-            status: "success",
-            type: "deposit",
-            userId,
-            charge: VTU_CHARGE,
-            creditedAmount
-        }, { transaction: t });
+        // Emergency validation safeguard
+        if (!userId) {
+            return res.status(400).json({ status: "fail", message: "Failed to extract target user mapping identifier" });
+        }
 
-        // Commit DB transaction
-        await t.commit();
-
-        // Return success response
-        res.status(200).json({
-            status: "success"
+        // 4. Clean Idempotency Check (Prevent Double Crediting)
+        // Check if this explicit Monnify reference has already been marked successful
+        const existingTransaction = await Funding.findOne({ 
+            where: { reference, status: "success" } 
         });
+
+        if (existingTransaction) {
+            return res.status(200).json({ status: "success", message: "Transaction already finalized" });
+        }
+
+        // 5. Atomic Safe Balance Progression
+        const t = await sequelize.transaction();
+
+        try {
+            // Lock wallet row to prevent race conditions
+            const wallet = await Wallet.findOne({
+                where: { userId },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+
+            if (!wallet) {
+                await t.rollback();
+                return res.status(404).json({ status: "fail", message: "Target wallet entity missing" });
+            }
+
+            const creditedAmount = amountPaid - VTU_CHARGE;
+
+            // Credit Balance
+            wallet.vtuBalance += creditedAmount;
+            await wallet.save({ transaction: t });
+
+            if (isCheckout) {
+                // Find the existing initialized checkout log record
+                const checkoutPayment = await Funding.findOne({
+                    where: { paymentReference },
+                    transaction: t,
+                    lock: t.LOCK.UPDATE
+                });
+
+                if (checkoutPayment) {
+                    // Double check status to prevent overwriting if verification endpoint beat the webhook
+                    if (checkoutPayment.status === "success") {
+                        await t.rollback();
+                        return res.status(200).json({ status: "success", message: "Checkout already processed successfully" });
+                    }
+
+                    // Update existing row metrics
+                    checkoutPayment.reference = reference;
+                    checkoutPayment.status = "success";
+                    checkoutPayment.amount = amountPaid;
+                    checkoutPayment.charge = VTU_CHARGE;
+                    checkoutPayment.creditedAmount = creditedAmount;
+                    
+                    await checkoutPayment.save({ transaction: t });
+                } else {
+                    // Fallback creation if initial checkout log row was missing
+                    await Funding.create({
+                        reference,
+                        paymentReference,
+                        amount: amountPaid,
+                        status: "success",
+                        type: "deposit",
+                        userId,
+                        charge: VTU_CHARGE,
+                        creditedAmount
+                    }, { transaction: t });
+                }
+            } else {
+                // Write a brand new row for incoming direct virtual account transfers
+                await Funding.create({
+                    reference,
+                    paymentReference: paymentReference || `REV-${Date.now()}`,
+                    amount: amountPaid,
+                    status: "success",
+                    type: "deposit",
+                    userId,
+                    charge: VTU_CHARGE,
+                    creditedAmount
+                }, { transaction: t });
+            }
+
+            // Commit DB transaction changes permanently
+            await t.commit();
+            return res.status(200).json({ status: "success" });
+
+        } catch (dbError) {
+            // Roll back changes if database calls fail internally
+            await t.rollback();
+            throw dbError; // Pass down to primary catch block for uniform output logging
+        }
 
     } catch (error) {
-        // Rollback if any operation fails
-        await t.rollback();
-        return next(new AppError("Transaction processing failed", "", 500));
+        // Log the exact error to your console so you can see crashes in your panel
+        console.error("CRITICAL WEBHOOK PROCESSING FAILURE:", error);
+        
+        // Return a clean JSON string back to Monnify instead of throwing an HTML error page
+        return res.status(500).json({ 
+            status: "error", 
+            message: "Internal ledger processing crash",
+            error: error.message 
+        });
     }
 });

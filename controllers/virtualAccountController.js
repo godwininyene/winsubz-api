@@ -43,9 +43,6 @@ exports.createVirtualAccount = catchAsync(async (req, res, next) => {
     if (bvn) payload.bvn = bvn;
     if (nin) payload.nin = nin;
 
-    console.log('PAYLOAD', payload);
-    
-
     let response;
 
     try {
@@ -59,7 +56,6 @@ exports.createVirtualAccount = catchAsync(async (req, res, next) => {
             }
         );
 
-        console.log('MONNIFY RESPONSE', response);
         
     } catch (error) {
 

@@ -1,5 +1,5 @@
 const catchAsync = require("../utils/catchAsync");
-// const axios = require('../lib/axios');
+const getCostPrice = require('./../utils/getCostPrice')
 const axios = require('axios')
 const AppError = require('../utils/appError');
 const {
@@ -118,7 +118,6 @@ exports.verifyMeter = catchAsync(async (req, res, next) => {
 
 
 exports.buyElectricity = catchAsync(async (req, res, next) => {
-
   const { meter, plan, amount, type, phone } = req.body;
 
   if (!meter || !plan || !amount || !type || !phone) {
@@ -141,7 +140,7 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
   const sellingPrice = faceValue;
 
   const requestId = `EL-${Date.now()}-${req.user.id}`;
-   // ✅ Generate providerRequestId (truncate UUID safely)
+  // ✅ Generate providerRequestId (truncate UUID safely)
   const providerRequestId = requestId.split('-').slice(0, 4).join('-');
 
   // 🔁 Idempotency check
@@ -168,7 +167,6 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
   let tx;
 
   try {
-
     wallet = await Wallet.findOne({
       where: { userId: req.user.id },
       lock: t.LOCK.UPDATE,
@@ -215,7 +213,6 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
 
       initialBalance,
       finalBalance: null
-
     }, { transaction: t });
 
     await t.commit();
@@ -225,13 +222,11 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
     throw err;
   }
 
-
   let providerResponse;
   let success = false;
   let data = {};
 
   try {
-
     const payload = {
       identifier: "electricity",
       meter,
@@ -254,31 +249,33 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
 
     data = providerResponse.data;
 
-    console.log('PEYFLEX RESPONSE', providerResponse);
+    console.log('PEYLEX ELECTRICITY RESPONSE', providerResponse);
     
-
+   
   } catch (err) {
-
     // Peyflex returns error responses inside err.response
+    console.log('PEYLEX ELECTRIC ERROR', err);
+    
     data = err.response?.data || {};
     providerResponse = err.response;
-
-
   }
 
   success = data.status === "SUCCESSFUL" || data.status === "SUCCESS";
 
-  const actualCost = Number(data.amount || faceValue);
+  // ✅ FIXED: Normalized parameters passed as unified payload object
+  const actualCost = getCostPrice("peyflex", faceValue, {
+    type: "electricity"
+  });
   const providerDiscount = Math.max(faceValue - actualCost, 0);
   const realProfit = sellingPrice - actualCost;
 
+  // ✅ FIXED: Prevent concurrency issues using an atomic update operation instead of direct mutated instance save.
   if (!success) {
-    wallet.vtuBalance += sellingPrice;
-    await wallet.save();
+    await wallet.increment('vtuBalance', { by: sellingPrice });
+    await wallet.reload(); // Local instance updated so finalBalance logs accurately below
   }
 
   await tx.update({
-
     status: success ? "success" : "failed",
     providerStatus: data.status || null,
     providerRef: data.reference || null,
@@ -291,9 +288,7 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
     providerDiscount: Math.round(providerDiscount),
 
     finalBalance: wallet.vtuBalance
-
   });
-
 
   const refreshedTx = await VTUTransaction.findByPk(tx.id);
 
@@ -307,14 +302,12 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
     createdAt: refreshedTx.createdAt
   };
 
-
   if (success) {
     return res.status(200).json({
       status: "success",
       data: { transaction }
     });
   }
-
 
   // 🚫 Hide provider wallet balance issue
   if (data?.message?.toLowerCase().includes("wallet")) {
@@ -327,11 +320,9 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
     );
   }
 
-
   return res.status(400).json({
     status: "fail",
     message: data?.message || "Electricity purchase failed",
     data: { transaction }
   });
-
 });

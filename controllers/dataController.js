@@ -1,6 +1,7 @@
 const axios = require('../lib/axios');
 const catchAsync = require('./../utils/catchAsync');
 const AppError = require('../utils/appError');
+const getCostPrice = require('./../utils/getCostPrice')
 const normalizeProviderResponse = require('./../utils/normalizeProviderResponse')
 const {
     VTUTransaction,
@@ -231,8 +232,8 @@ exports.buyData = catchAsync(async (req, res, next) => {
             headers: { Authorization: `Bearer ${process.env.GSUBZ_API_KEY}` }
         });
 
-        console.log('PROVIDER RESPONSE', providerResponse.data);
-
+        // console.log('GSUBZ DATA RESPONSE', providerResponse);
+        
         // ✅ Normalize response
         const {
             code,
@@ -249,7 +250,11 @@ exports.buyData = catchAsync(async (req, res, next) => {
 
         const status = isClearlySuccessful ? "success" : "pending";
 
-        const actualCost = Number(providerResponse.data?.amountPaid || faceValue);
+        // const actualCost = Number(providerResponse.data?.amountPaid || faceValue);
+        const actualCost = getCostPrice("gsubz", faceValue, {
+            type: "data",
+            apiResponse: providerResponse.data
+        });
         const providerDiscount = Math.max(faceValue - actualCost, 0);
         const roundedCost = Math.round(actualCost);
         const realProfit = sellingPrice - roundedCost;
@@ -295,8 +300,8 @@ exports.buyData = catchAsync(async (req, res, next) => {
 
     } catch (err) {
         // ❗ DO NOT REFUND
-        console.log("PROVIDER ERROR:", err.message);
-
+        // console.log('ERROR BUYING DATA', err);
+        
         await tx.update({
             status: "pending"
         });

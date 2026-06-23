@@ -6,6 +6,7 @@ const authController = require('./../controllers/authController');
 
 // Apply protect middleware to all routes
 router.use(authController.protect);
+router.route('/providers').get(cableController.getProviders)
 router.route('/plans').get(cableController.getDataPlans)
 router.route('/verify-card').post(cableController.verifyCableCard)
 router.route('/subscribe').post(cableController.buyCableSub)

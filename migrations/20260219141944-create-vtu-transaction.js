@@ -131,6 +131,10 @@ module.exports = {
         type: Sequelize.STRING,
         allowNull: true
       },
+      deliveryMessage: {
+        type: Sequelize.TEXT,
+        allowNull: true
+      },
 
       verificationAttempts: {
         type: Sequelize.INTEGER,

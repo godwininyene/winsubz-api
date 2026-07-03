@@ -1,4 +1,4 @@
-const { User, Wallet } = require("../models");
+const { User, Wallet, PromoCode, PromoUsage } = require("../models");
 const AppError = require("../utils/appError");
 const catchAsync = require("../utils/catchAsync");
 const jwt = require("jsonwebtoken");
@@ -65,13 +65,45 @@ exports.signup = catchAsync(async (req, res, next) => {
     password: req.body?.password,
     passwordConfirm: req.body?.passwordConfirm,
     referralId: req.body?.referralId,
-    accountId: await generateAccountId()
+    accountId: await generateAccountId(),
   });
 
-  // 2. Create wallet for the user
+  // 2. Create wallet
   await Wallet.create({ userId: user.id });
 
-  // 3. Send welcome email (do not block signup if email fails)
+  // 3. Track promo code usage if one was supplied at signup.
+  //    We only create the ledger entry here — no counter increment, no commission.
+  //    The counter (currentUses) increments only when the user makes their first
+  //    purchase, so maxUses represents paid conversions, not dead signups.
+  if (req.body?.promoCode) {
+    try {
+      const promo = await PromoCode.findOne({
+        where: {
+          code: req.body.promoCode.toUpperCase().trim(),
+          status: 'active',
+        },
+      });
+
+      const isValid =
+        promo &&
+        promo.currentUses < promo.maxUses &&
+        new Date() < new Date(promo.expiryDate);
+
+      if (isValid) {
+        await PromoUsage.create({
+          promoCodeId: promo.id,
+          userId: user.id,
+          commissionStatus: 'none',
+        });
+      }
+      // Invalid/expired code — silently ignore. Signup succeeds regardless.
+    } catch (promoErr) {
+      // Never block signup over a promo code issue
+      console.error("Promo code tracking failed during signup:", promoErr.message);
+    }
+  }
+
+  // 4. Send welcome email (non-blocking)
   try {
     await new Email(
       user,
@@ -81,9 +113,11 @@ exports.signup = catchAsync(async (req, res, next) => {
   } catch (error) {
     console.log("Welcome email failed:", error);
   }
-  // 4. Send JWT token
+
+  // 5. Send JWT token
   createSendToken(user, 201, req, res);
 });
+
 
 exports.login = catchAsync(async (req, res, next) => {
   //1. Get user based on POSTed email

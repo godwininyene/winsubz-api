@@ -1,8 +1,13 @@
 const express = require("express");
-const walletController = require("../controllers/walletController");
+const webhookController = require("../controllers/webhookController");
+
 
 const router = express.Router();
 
-router.post("/monnify", walletController.monnifyWebhook);
+//Deposits Webhook (Reserved accounts & Checkout)
+router.post("/monnify", webhookController.monnifyDepositWebhook);
+
+//Payouts Webhook (Influencer Bank Outbound Transfers)
+router.post("/monnify-disbursements", webhookController.handleMonnifyDisbursementWebhook);
 
 module.exports = router;

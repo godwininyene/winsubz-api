@@ -2,43 +2,47 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable('bankAccounts', {
+    await queryInterface.createTable('promoUsages', {
       id: {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
         type: Sequelize.INTEGER
       },
-      userId: {
+      promoCodeId: {
         type: Sequelize.INTEGER,
         allowNull: false,
         references: {
-          model: 'Users',
+          model: 'promoCodes',
+          key: 'id'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'CASCADE' 
+      },
+      userId: {
+        type: Sequelize.INTEGER,
+        allowNull: false,
+        unique: true,            // enforces one-code-per-user rule
+        references: {
+          model: 'Users',  
           key: 'id'
         },
         onUpdate: 'CASCADE',
         onDelete: 'CASCADE'
       },
-      context: {
-        type: Sequelize.STRING,
-        defaultValue: 'user'
-      },
-      bank: {
-        type: Sequelize.STRING,
-        allowNull: false
-      },
-      bankCode: { 
-        type: Sequelize.STRING,
+      isFirstFundingTriggered: {
+        type: Sequelize.BOOLEAN,
         allowNull: false,
+        defaultValue: false
       },
-      number: {
-        type: Sequelize.STRING,
+      commissionStatus: {
+        type: Sequelize.ENUM('none', 'pending', 'mature', 'reversed'),
         allowNull: false,
-        unique: true
+        defaultValue: 'none'
       },
-      name: {
-        type: Sequelize.STRING,
-        allowNull: false
+      matureAt: {
+        type: Sequelize.DATE,
+        allowNull: true
       },
       createdAt: {
         allowNull: false,
@@ -50,7 +54,8 @@ module.exports = {
       }
     });
   },
+
   async down(queryInterface, Sequelize) {
-    await queryInterface.dropTable('bankAccounts');
+    await queryInterface.dropTable('promoUsages');
   }
 };

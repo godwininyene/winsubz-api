@@ -222,6 +222,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true
     },
+    deliveryMessage: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
 
     verificationAttempts: {
       type: DataTypes.INTEGER,

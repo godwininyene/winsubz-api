@@ -37,6 +37,14 @@ module.exports = (sequelize, DataTypes) => {
         notEmpty: { msg: 'Bank name cannot be empty' }
       }
     },
+    bankCode: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        notNull: { msg: 'Bank code is required for automated payouts' },
+        notEmpty: { msg: 'Bank code cannot be empty' }
+      }
+    },
     number: {
       type: DataTypes.STRING,
       allowNull: false,

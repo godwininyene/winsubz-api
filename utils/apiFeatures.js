@@ -1,21 +1,21 @@
 const { Op } = require('sequelize');
 
-const{sequelize} = require('./../models');
+const { sequelize } = require('./../models');
 const AppError = require('./appError');
-class APIFeatures{
-    constructor(queryString, modelName){
+class APIFeatures {
+    constructor(queryString, modelName) {
         this.queryString = queryString;
         this.modelName = modelName;
         this.queryOptions = {
-            where:{},
-            include:[],
-            order:[],
+            where: {},
+            include: [],
+            order: [],
             // limit:5,
             // offset:1,
         }
-        this.paginationInfo={
-            limit:15,
-            page:1
+        this.paginationInfo = {
+            limit: 15,
+            page: 1
         }
     }
 
@@ -24,14 +24,14 @@ class APIFeatures{
         return !isNaN(Date.parse(value));
     }
 
-    filter(){
+    filter() {
         // 1A) Filtering
         // Allowed Sequelize operators
         const allowedOps = ["eq", "ne", "gte", "lte", "gt", "lt", "like", "iLike", "between", "notBetween", "in", "notIn"];
         const queryObj = { ...this.queryString };
         const excludedFields = ["page", "sort", "limit", "fields", "search"];
         excludedFields.forEach((el) => delete queryObj[el]);
-        
+
         // 1B) Advanced filtering
         let keys = Object.keys(queryObj);
         keys.forEach((key) => {
@@ -40,38 +40,38 @@ class APIFeatures{
             // Filtering with operator (object case)
             if (typeof value === "object" && value !== null) {
                 this.queryOptions.where[key] = {};
-               
-                
+
+
                 Object.keys(value).forEach((operator) => {
                     if (allowedOps.includes(operator)) {
                         const rawVal = value[operator];
                         // Handle date values specially - don't convert to number
                         if (this.isDateString(rawVal)) {
-                            
+
                             this.queryOptions.where[key][Op[operator]] = new Date(rawVal);
                         } else {
                             // Convert number if possible, otherwise keep as string
                             this.queryOptions.where[key][Op[operator]] = isNaN(rawVal) ? rawVal : Number(rawVal);
                         }
-                    
-                    }else{
-                    
+
+                    } else {
+
                         throw new AppError(`Invalid operator(${operator})`)
                     }
                 });
 
             } else {
-            // Simple equality
-            this.queryOptions.where[key] = isNaN(value) ? value : Number(value);
+                // Simple equality
+                this.queryOptions.where[key] = isNaN(value) ? value : Number(value);
             }
         });
 
         // Handle search with model-specific fields
         if (this.queryString.search) {
-            const searchTerm = this.queryString.search; 
+            const searchTerm = this.queryString.search;
             const searchConditions = this.getSearchConditions(searchTerm);
-           
-            if (searchConditions.length > 0) { 
+
+            if (searchConditions.length > 0) {
                 this.queryOptions.where = {
                     ...this.queryOptions.where,
                     [Op.or]: searchConditions
@@ -99,6 +99,10 @@ class APIFeatures{
                 { field: 'providerRef', type: 'string' },
                 { field: 'beneficiary', type: 'string' }
             ],
+            PromoCode: [
+                { field: 'code', type: 'string' },
+                { field: 'status', type: 'string' }
+            ],
             Giftcard: [
                 { field: 'cardName', type: 'string' },
             ],
@@ -106,7 +110,7 @@ class APIFeatures{
                 { field: 'coinName', type: 'string' },
             ],
         };
-    
+
         const searchConditions = [];
         const fields = modelSearchFields[this.modelName] || [];
         fields.forEach(({ field, type }) => {
@@ -119,7 +123,7 @@ class APIFeatures{
                         { [Op.like]: `%${searchTerm.toLowerCase()}%` }
                     )
                 );
-            
+
             } else if (type === 'phone') {
                 searchConditions.push({
                     [qualifiedField]: {
@@ -134,33 +138,33 @@ class APIFeatures{
                 }
             }
         });
-    
+
         return searchConditions;
     }
 
-    sort(){
-        if(this.queryString.sort){
-        const sortBy = this.queryString.sort.split(',');
-        this.queryOptions.order = sortBy.map(field=>{
-            if(field.startsWith('-')){
-                return[field.slice(1), 'DESC']
-            }else{
-                return [field, 'ASC']
-            }
-        })
-        }else{
+    sort() {
+        if (this.queryString.sort) {
+            const sortBy = this.queryString.sort.split(',');
+            this.queryOptions.order = sortBy.map(field => {
+                if (field.startsWith('-')) {
+                    return [field.slice(1), 'DESC']
+                } else {
+                    return [field, 'ASC']
+                }
+            })
+        } else {
             this.queryOptions.order = [['createdAt', 'DESC']];
         }
 
         return this;
     }
 
-    limitFields(){
-        if(this.queryString.fields){
+    limitFields() {
+        if (this.queryString.fields) {
             const fields = this.queryString.fields.split(',');
             const includeFields = [];
             const excludeFields = [];
-            
+
             fields.forEach(field => {
                 if (field.startsWith('-')) {
                     excludeFields.push(field.slice(1));
@@ -168,7 +172,7 @@ class APIFeatures{
                     includeFields.push(field);
                 }
             });
-        
+
             // Set attributes based on whether we have includes or excludes
             if (includeFields.length > 0 && excludeFields.length > 0) {
                 // If both include and exclude are specified, use include only
@@ -179,15 +183,15 @@ class APIFeatures{
             } else if (excludeFields.length > 0) {
                 this.queryOptions.attributes = { exclude: excludeFields };
             }
-            
+
         }
 
         return this;
     }
-    paginate(){
+    paginate() {
         const page = this.queryString?.page * 1 || this.paginationInfo.page;
         const limit = this.queryString?.limit * 1 || this.paginationInfo.limit
-        const offset = (page -1 ) * limit
+        const offset = (page - 1) * limit
         this.queryOptions.offset = offset;
         this.queryOptions.limit = limit
 
@@ -196,11 +200,11 @@ class APIFeatures{
         return this;
     }
 
-    getPaginationInfo(){
+    getPaginationInfo() {
         return this.paginationInfo
     }
 
-    getFeaures(){
+    getFeaures() {
         return this.queryOptions
 
     }

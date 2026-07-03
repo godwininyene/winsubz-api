@@ -7,6 +7,9 @@ const router = express.Router();
 // Apply protect middleware to all routes
 router.use(authController.protect);
 
+router.get('/supported-banks', bankAccountController.getSupportedBanks)
+router.post('/verify-account', bankAccountController.verifyAccountDetails)
+
 // General Route - accessible to all authenticated users
 router.get('/company', bankAccountController.getCompanyAccount);
 

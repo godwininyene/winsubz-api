@@ -14,6 +14,7 @@ exports.buyAirtime = catchAsync(async (req, res, next) => {
   const faceValue = Number(amount);
   if (!Number.isFinite(faceValue) || faceValue < 100) return next(new AppError("Airtime amount should not be less than N100", "", 400));
 
+  // Initialize row locking and ledger creations securely
   const context = await transactionService.initialize({
     userId: req.user.id,
     type: 'airtime',
@@ -35,38 +36,33 @@ exports.buyAirtime = catchAsync(async (req, res, next) => {
   }
 
   try {
-    const resData = await providerService.dispatch("gsubz", "airtime", {
-      serviceId: serviceID, faceValue, phone, providerRequestId: context.providerRequestId
+    // 🔥 Call the newly extracted unified processor engine
+    await providerService.processGsubzTransaction({
+        context,
+        serviceType: "airtime",
+        serviceId: serviceID,
+        faceValue,
+        sellingPrice: faceValue,
+        payload: { serviceId: serviceID, faceValue, phone, providerRequestId: context.providerRequestId }
     });
 
-    const { status: normalizedStatus, isSuccessStatus, isSuccessCode, providerRef } = normalizeProviderResponse(resData);
-    const isSuccess = isSuccessCode && isSuccessStatus && providerRef;
-
-    const actualCost = getCostPrice("gsubz", faceValue, { type: "airtime", apiResponse: resData });
-    const roundedCost = Math.round(actualCost);
-
-    await context.tx.update({
-      status: isSuccess ? "success" : "pending",
-      providerStatus: normalizedStatus,
-      providerRef: providerRef || null,
-      costPrice: roundedCost,
-      amountPaid: actualCost,
-      profit: faceValue - roundedCost,
-      providerDiscount: Math.round(Math.max(faceValue - roundedCost, 0)),
-      finalBalance: context.wallet.vtuBalance
-    });
-
-    if (resData?.description === 'INSUFFICIENT_BALANCE') {
-      return next(new AppError("Service unavailable. Please try again later.", "Low Provider Balance", 503));
-    }
   } catch (err) {
-    await context.tx.update({ status: 'pending' });
+    console.error("Airtime runtime processing failure:", err);
+    if (context && context.tx) {
+      await context.tx.update({
+        status: 'pending',
+        deliveryMessage: err.message || "Network connection error"
+      });
+    }
   }
 
+  // 🏁 Output uniform response structure
   const output = await transactionService.getResponsePayload(context.tx.id);
   return res.status(200).json({
     status: "success",
-    message: output.status === "success" ? "Airtime purchase successful" : "Transaction processing. Check status shortly.",
+    message: output.status === "success" 
+      ? "Airtime purchase successful" 
+      : (output.deliveryMessage || "Transaction processing. Check status shortly."),
     data: { transaction: output }
   });
 });

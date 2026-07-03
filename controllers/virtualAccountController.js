@@ -1,18 +1,22 @@
-const catchAsync = require("../utils/catchAsync");
-const getMonnifyToken = require("../utils/monnifyAuth");
-const axios = require("../lib/axios");
 const { VirtualAccount } = require("../models");
+const monnifyService = require("../services/monnifyService");
 const AppError = require("../utils/appError");
+const catchAsync = require("../utils/catchAsync");
 
+/**
+ *1. Request and Create a New Dedicated Virtual Bank Account
+ * Automatically uses our centralized service class for the API handshake.
+ */
 exports.createVirtualAccount = catchAsync(async (req, res, next) => {
-
     const user = req.user;
     const { bvn, nin } = req.body;
 
+    // A user must provide at least one form of valid identification to tie to the account
     if (!bvn && !nin) {
         return next(new AppError("BVN or NIN is required to generate a virtual account", "", 400));
     }
 
+    // Ensure national identity configurations contain the correct character count string format
     if (nin && !/^\d{11}$/.test(String(nin))) {
         return next(new AppError("NIN must be exactly 11 digits", "", 400));
     }
@@ -20,6 +24,8 @@ exports.createVirtualAccount = catchAsync(async (req, res, next) => {
     if (bvn && !/^\d{11}$/.test(String(bvn))) {
         return next(new AppError("BVN must be exactly 11 digits", "", 400));
     }
+
+    // Check if we have already provisioned a bank account for this user profile
     const existingAccount = await VirtualAccount.findOne({
         where: { userId: user.id }
     });
@@ -28,53 +34,32 @@ exports.createVirtualAccount = catchAsync(async (req, res, next) => {
         return next(new AppError("User already has a virtual account", "", 400));
     }
 
-    const token = await getMonnifyToken();
-
-    const payload = {
-        accountReference: `winsubz-${user.id}`,
-        accountName: `${user.firstName} ${user.lastName}`,
-        currencyCode: "NGN",
-        contractCode: process.env.MONNIFY_CONTRACT_CODE,
-        customerEmail: user.email,
-        customerName: `${user.firstName} ${user.lastName}`,
-        getAllAvailableBanks: true
-    };
-
-    if (bvn) payload.bvn = bvn;
-    if (nin) payload.nin = nin;
-
-    let response;
+    let accountData;
 
     try {
-        response = await axios.post(
-            `${process.env.MONNIFY_BASE_URL}/api/v2/bank-transfer/reserved-accounts`,
-            payload,
-            {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            }
-        );
-
-        
+        // Use our clean, unified service class wrapper
+        accountData = await monnifyService.createReservedAccount({
+            userId: user.id,
+            customerName: `${user.firstName} ${user.lastName}`,
+            customerEmail: user.email,
+            bvn,
+            nin
+        });
     } catch (error) {
-
-        // Handle Monnify error response
+        // If the Monnify API rejects the creation request (e.g., identity verification issues), pass the reason on
         if (error.response) {
-            const message =
-                error.response.data?.responseMessage ||
-                "Unable to create virtual account";
-
+            const message = error.response.data?.responseMessage || "Unable to create virtual account";
             return next(new AppError(message, "", error.response.status));
         }
 
-        // Handle network errors
+        // Fallback for timeout or offline communication errors
         return next(new AppError("Monnify service unavailable", "", 500));
     }
 
-    const accountData = response.data.responseBody;
+    // Grab the first available bank option provided back from Monnify's multi-bank pool array
     const primaryAccount = accountData.accounts[0];
 
+    // Log the newly minted virtual accounts inside our local database tracker
     const virtualAccount = await VirtualAccount.create({
         userId: user.id,
         accountReference: accountData.accountReference,
@@ -86,6 +71,7 @@ exports.createVirtualAccount = catchAsync(async (req, res, next) => {
         status: "active"
     });
 
+    // Send the generated details right back to the user interface
     res.status(200).json({
         status: "success",
         data: {
@@ -94,16 +80,20 @@ exports.createVirtualAccount = catchAsync(async (req, res, next) => {
             bankName: virtualAccount.bankName
         }
     });
-
 });
 
-exports.getMyVirtualAccount = catchAsync(async(req,res,next)=>{ 
-    const account = await VirtualAccount.findOne({where: {userId: req.user.id}});
+/**
+ * 🔍 2. Fetch Active Virtual Bank Accounts Saved Under the User Profile
+ */
+exports.getMyVirtualAccount = catchAsync(async (req, res, next) => {
+    const account = await VirtualAccount.findOne({ 
+        where: { userId: req.user.id } 
+    });
+    
     res.status(200).json({
-        status:"success",
-        data:{
+        status: "success",
+        data: {
             account
         }
-    })
-})
-
+    });
+});

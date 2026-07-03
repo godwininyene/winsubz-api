@@ -5,6 +5,7 @@ const getCostPrice = require('./../utils/getCostPrice');
 const normalizeProviderResponse = require('./../utils/normalizeProviderResponse');
 const transactionService = require('../services/transactionService');
 const providerService = require('../services/providerService');
+const promoService = require('../services/promoService');
 const { VTUTransaction, Wallet, User } = require("../models");
 
 function applyMarkup(amount) {
@@ -103,51 +104,53 @@ exports.buyData = catchAsync(async (req, res, next) => {
     }
 
     try {
-        const resData = await providerService.dispatch("gsubz", "data", {
-            serviceId, plan, phone, providerRequestId: context.providerRequestId
+        //Call the unified processor engine
+        const finalStatus = await providerService.processGsubzTransaction({
+            context,
+            serviceType: "data",
+            serviceId,
+            faceValue,
+            sellingPrice,
+            payload: { serviceId, plan, phone, providerRequestId: context.providerRequestId }
         });
 
-        const { status: normalizedStatus, isSuccessStatus, isSuccessCode, providerRef } = normalizeProviderResponse(resData);
-        const isSuccess = isSuccessCode && isSuccessStatus && providerRef;
-        const status = isSuccess ? "success" : "pending";
-
-        const actualCost = getCostPrice("gsubz", faceValue, { type: "data", apiResponse: resData });
-        const roundedCost = Math.round(actualCost);
-
-        await context.tx.update({
-            status,
-            providerStatus: normalizedStatus,
-            providerRef,
-            costPrice: roundedCost,
-            amountPaid: actualCost,
-            profit: sellingPrice - roundedCost,
-            providerDiscount: Math.round(Math.max(faceValue - actualCost, 0)),
-            finalBalance: context.wallet.vtuBalance
-        });
-
-        if (resData?.description === 'INSUFFICIENT_BALANCE') {
-            return next(new AppError("Service temporarily unavailable. Please try again later.", "Provider wallet low", 503));
-        }
-
-        //Referral Logic (ONLY on success)
-        if (status === "success" && req.user.referralId) {
-            const referrer = await User.findOne({ where: { accountId: req.user.referralId } });
-            if (referrer && referrer.id !== req.user.id) {
-                const referralWallet = await Wallet.findOne({ where: { userId: referrer.id } });
-                if (referralWallet) {
-                    referralWallet.referralBalance += 2; // ₦2 Bonus
-                    await referralWallet.save();
+        //SUCCESS HOOKS: Run only if the unified processor confirmed true success
+        if (finalStatus === "success") {
+            if (req.user.referralId) {
+                const referrer = await User.findOne({ where: { accountId: req.user.referralId } });
+                if (referrer && referrer.id !== req.user.id) {
+                    const referralWallet = await Wallet.findOne({ where: { userId: referrer.id } });
+                    if (referralWallet) {
+                        referralWallet.referralBalance += 2;
+                        await referralWallet.save();
+                    }
                 }
             }
+
+            try {
+                await promoService.checkAndTriggerPromoPayout(req.user.id);
+            } catch (promoErr) {
+                console.error("Promo processing failed silently:", promoErr);
+            }
         }
+
     } catch (err) {
-        await context.tx.update({ status: "pending" });
+        console.error("Data runtime processing failure:", err);
+        if (context && context.tx) {
+            await context.tx.update({
+                status: "pending",
+                deliveryMessage: err.message || "Network connection error"
+            });
+        }
     }
 
+    //Output uniform response structure
     const output = await transactionService.getResponsePayload(context.tx.id);
     return res.status(200).json({
         status: "success",
-        message: output.status === "success" ? "Transaction successful" : "Transaction is being processed. Please check back shortly.",
+        message: output.status === "success"
+            ? "Transaction successful"
+            : (output.deliveryMessage || "Transaction is being processed. Please check back shortly."),
         data: { transaction: output }
     });
 });
@@ -159,57 +162,27 @@ exports.verifyTransaction = catchAsync(async (req, res, next) => {
     const tx = await VTUTransaction.findOne({ where: { requestId } });
     if (!tx) return next(new AppError("Transaction not found", "", 404));
 
-    if (tx.status === "success") {
+    // 🚀 REFACTOR: Forward directly to your unified service engine to eliminate race conditions!
+    try {
+        await transactionService.verifyTransactionInternal(tx);
+
+        // Fetch fresh state out of the engine payload mapping
+        const output = await transactionService.getResponsePayload(tx.id);
+
         return res.status(200).json({
             status: "success",
-            message: "Transaction already successful",
-            data: { transaction: tx }
+            message: output.status === "success"
+                ? "Transaction successful"
+                : output.status === "failed"
+                    ? "Transaction failed and processed"
+                    : "Transaction is pending execution",
+            data: { transaction: output }
         });
-    }
-
-    const providerRequestId = tx.providerRequestId || tx.requestId.split('-').slice(0, 4).join('-');
-
-    try {
-        const formData = new FormData();
-        formData.append("requestID", providerRequestId);
-        formData.append("api", process.env.GSUBZ_API_KEY);
-
-        const providerResponse = await axios.post(`api/verify/`, formData, {
-            headers: { Authorization: `Bearer ${process.env.GSUBZ_API_KEY}` }
-        });
-
-        const { status: normalizedStatus, isSuccessStatus, isFailedStatus, isSuccessCode, providerRef } = normalizeProviderResponse(providerResponse.data);
-
-        if (isSuccessCode && isSuccessStatus) {
-            await tx.update({
-                status: "success",
-                providerStatus: normalizedStatus,
-                providerRef: providerRef || tx.providerRef
-            });
-            return res.status(200).json({
-                status: "success",
-                message: "Transaction confirmed successful",
-                data: { transaction: tx }
-            });
-        }
-
-        if (isFailedStatus) {
-            if (tx.status !== "failed") {
-                const wallet = await Wallet.findOne({ where: { userId: tx.userId } });
-                if (wallet) {
-                    await transactionService.processRefund(tx, wallet, tx.sellingPrice);
-                    await tx.update({ providerStatus: normalizedStatus, finalBalance: wallet.vtuBalance + tx.sellingPrice });
-                }
-            }
-            return res.status(200).json({
-                status: "success",
-                message: "Transaction failed and refunded",
-                data: { transaction: tx }
-            });
-        }
-
-        return res.status(200).json({ status: "success", message: "Transaction still pending", data: { transaction: tx } });
     } catch (err) {
-        return res.status(200).json({ status: "success", message: "Unable to verify at the moment. Please try again later.", data: { transaction: tx } });
+        return res.status(200).json({
+            status: "success",
+            message: "Unable to complete real-time verification. Status will update via background systems shortly.",
+            data: { transaction: await transactionService.getResponsePayload(tx.id) }
+        });
     }
 });

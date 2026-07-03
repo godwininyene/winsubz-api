@@ -1,5 +1,10 @@
 const axios = require('../lib/axios');
 const rawAxios = require('axios');
+const normalizeProviderResponse =require('./../utils/normalizeProviderResponse')
+const sanitizeDeliveryMessage = require('./../utils/sanitizeDeliveryMessage');
+const getCostPrice = require('./../utils/getCostPrice');
+const transactionService = require('./transactionService');
+
 /**
  * Standardizes outbound provider API communications
  */
@@ -43,6 +48,85 @@ class ProviderService {
       headers: { Authorization: `Bearer ${process.env.GSUBZ_API_KEY}` }
     });
     return res.data;
+  }
+  /**
+  * 🚀 UNIFIED ORCHESTRATOR FOR GSUBZ WORKFLOWS
+  * Handles dispatching, intercepting balance errors, status normalization, and immediate wallet refunds.
+  */
+  async processGsubzTransaction({ context, serviceType, serviceId, payload, faceValue, sellingPrice }) {
+    // 1. Fire upstream request to Gsubz using safe instance binding
+    const resData = await this.dispatch("gsubz", serviceType, payload);
+    console.log(`PROVIDER ${serviceType.toUpperCase()} RESPONSE:`, resData);
+
+    // 2. Clear out immediate provider balance exhaustion hurdles
+    if (resData?.description === 'INSUFFICIENT_BALANCE') {
+      const amountToRefund = context.tx.sellingPrice;
+      await transactionService.processRefund(context.tx, context.wallet, amountToRefund);
+
+      await context.tx.update({
+        status: "failed",
+        providerStatus: "INSUFFICIENT_BALANCE",
+        isRefunded: true,
+        finalBalance: context.wallet.vtuBalance + amountToRefund,
+        deliveryMessage: "Service temporarily unavailable due to upstream provider maintenance."
+      });
+      return "failed"; // Stop processing further down
+    }
+
+    // 3. Normalize structural layout elements
+    const {
+      status: normalizedStatus,
+      isSuccessStatus,
+      isFailedStatus,
+      isReversedStatus,
+      isSuccessCode,
+      providerRef
+    } = normalizeProviderResponse(resData);
+
+    // Evaluate final transactional state metrics
+    const isSuccess = isSuccessCode && isSuccessStatus && providerRef;
+    const isExplicitFailure = isFailedStatus || isReversedStatus || resData?.code === 400;
+
+    let status = "pending";
+    if (isSuccess) status = "success";
+    if (isExplicitFailure) status = isReversedStatus ? "reversed" : "failed";
+
+    const deliveryMessage = sanitizeDeliveryMessage(resData?.api_response, resData?.message);
+    const actualCost = getCostPrice("gsubz", faceValue, { type: serviceType, apiResponse: resData });
+    const roundedCost = Math.round(actualCost);
+
+    // 4. Handle Ledger States & Wallet Refunds Synchronously
+    if (isExplicitFailure) {
+      const amountToRefund = context.tx.sellingPrice;
+      await transactionService.processRefund(context.tx, context.wallet, amountToRefund);
+
+      await context.tx.update({
+        status,
+        providerStatus: normalizedStatus,
+        providerRef: providerRef || null,
+        costPrice: roundedCost,
+        amountPaid: actualCost,
+        profit: sellingPrice - roundedCost,
+        providerDiscount: Math.round(Math.max(faceValue - roundedCost, 0)),
+        isRefunded: true,
+        finalBalance: context.wallet.vtuBalance + amountToRefund, // Update final visual balance snapshot
+        deliveryMessage
+      });
+    } else {
+      await context.tx.update({
+        status,
+        providerStatus: normalizedStatus,
+        providerRef: providerRef || null,
+        costPrice: roundedCost,
+        amountPaid: actualCost,
+        profit: sellingPrice - roundedCost,
+        providerDiscount: Math.round(Math.max(faceValue - roundedCost, 0)),
+        finalBalance: context.wallet.vtuBalance,
+        deliveryMessage
+      });
+    }
+
+    return status; // Return final execution status string for controller success hooks
   }
 
   // --- PEYFLEX IMPLEMENTATIONS ---

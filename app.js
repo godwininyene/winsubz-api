@@ -22,10 +22,17 @@ const statsRouter = require('./routes/statsRoutes')
 const settingsRouter = require('./routes/settingsRoutes')
 const webhookRouter = require('./routes/webhookRoutes');
 const paymentRouter = require('./routes/paymentRoutes');
+const promoRouter = require('./routes/promoRoutes');
+const withdrawalRouter = require('./routes/withdrawalRoutes');
 
+
+//Cron jobs
 const startVerificationCron = require('./cron/verifyTransactions');
+const releasePromoCron = require('./cron/promoReleaseCron')
 
 startVerificationCron();
+releasePromoCron()
+
 
 
 
@@ -65,15 +72,6 @@ app.use(xss());
 app.use(hpp());
 
 // CORS (after security middleware)
-// app.use(cors({
-//     origin: process.env.FRONTEND_URL,
-//     credentials: true
-// }));
-// app.options(/.*/, cors({
-//     origin: process.env.FRONTEND_URL,
-//     credentials: true
-// }));
-
 const allowedOrigins = [
     "https://winsubz.com",
     "https://www.winsubz.com",
@@ -109,6 +107,9 @@ app.use('/api/v1/data', dataRouter)
 app.use('/api/v1/airtime', airtimeRouter);
 app.use('/api/v1/electricity', electricityRouter)
 app.use('/api/v1/cables', cableRouter)
+app.use('/api/v1/promo-codes', promoRouter);
+app.use('/api/v1/withdrawals', withdrawalRouter);
+
 //Not found route
 app.all(/.*/, (req, res, next)=>{
     return next(new AppError(`The requested URL ${req.originalUrl} was not found on this server!`, '', 404))

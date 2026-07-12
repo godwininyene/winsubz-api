@@ -2,6 +2,7 @@ const axios = require('../lib/axios');
 const FormData = require('form-data');
 const { VTUTransaction, Wallet, User, sequelize } = require("../models");
 const normalizeProviderResponse = require('../utils/normalizeProviderResponse');
+const getCostPrice = require('./../utils/getCostPrice')
 const sanitizeDeliveryMessage = require('../utils/sanitizeDeliveryMessage');
 const promoService = require('./promoService');
 
@@ -26,13 +27,17 @@ class TransactionService {
       });
 
       if (!wallet) {
-        await t.rollback();
-        throw new Error("Wallet not found");
+        const error = new Error("Wallet not found");
+        error.isOperational = true;
+        error.statusCode = 404;
+        throw error;
       }
 
       if (wallet.vtuBalance < sellingPrice) {
-        await t.rollback();
-        throw new Error("Insufficient wallet balance");
+        const error = new Error("Insufficient wallet balance");
+        error.isOperational = true;
+        error.statusCode = 400;
+        throw error;
       }
 
       const initialBalance = wallet.vtuBalance;
@@ -60,8 +65,19 @@ class TransactionService {
       await t.commit();
       return { isDuplicate: false, tx, providerRequestId, wallet };
     } catch (err) {
-      await t.rollback();
-      throw err;
+      // 🔍 Log the ACTUAL error causing the database failure before doing anything else
+      console.error("ACTUAL DATABASE ERROR:", err);
+
+      // 🛡️ Only roll back manually if Sequelize hasn't already finished the transaction
+      if (t && !t.finished) {
+        try {
+          await t.rollback();
+        } catch (rollbackErr) {
+          console.error("Rollback failed or was already handled:", rollbackErr.message);
+        }
+      }
+
+      throw err; // Pass the original error back up to your controller
     }
   }
 
@@ -187,12 +203,20 @@ class TransactionService {
       if (isSuccessCode && isSuccessStatus) {
         // 🎯 Check if this is the EXACT moment it transitions to success
         const isInitialSuccessTransition = tx.status !== "success";
+        const actualCost = getCostPrice("gsubz", tx.faceValue, { type: tx.type, apiResponse: response.data });
+        const roundedCost = Math.round(actualCost);
+        const profit = tx.sellingPrice - roundedCost;
+        const providerDiscount = Math.round(Math.max(tx.faceValue - roundedCost, 0));
 
         if (isInitialSuccessTransition) {
           await tx.update({
             status: "success",
             providerStatus: normalizedStatus,
             providerRef: providerRef || tx.providerRef,
+            costPrice: roundedCost,
+            amountPaid: actualCost,
+            profit,
+            providerDiscount,
             deliveryMessage,
             lastVerifiedAt: now
           });

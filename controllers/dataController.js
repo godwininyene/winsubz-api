@@ -82,19 +82,33 @@ exports.buyData = catchAsync(async (req, res, next) => {
     const faceValue = parseInt(selectedPlan.price);
     const sellingPrice = applyMarkup(faceValue);
 
-    // Initialize row locking and ledger creations securely
-    const context = await transactionService.initialize({
-        userId: req.user.id,
-        type: 'data',
-        provider: 'gsubz',
-        serviceId,
-        serviceName: plansRes.data.service || selectedPlan.displayName,
-        beneficiary: phone,
-        faceValue,
-        sellingPrice,
-        requestId,
-        extraFields: { planCode: plan, planLabel: selectedPlan.displayName }
-    });
+    let context;
+
+    // 1. Initialize row locking and ledger creations securely with explicit error safety
+    try {
+        context = await transactionService.initialize({
+            userId: req.user.id,
+            type: 'data',
+            provider: 'gsubz',
+            serviceId,
+            serviceName: plansRes.data.service || selectedPlan.displayName,
+            beneficiary: phone,
+            faceValue,
+            sellingPrice,
+            requestId,
+            extraFields: { planCode: plan, planLabel: selectedPlan.displayName }
+        });
+    } catch (initErr) {
+        console.error("Critical: Data transaction failed to initialize in DB:", initErr.message);
+
+        //If it's a known business validation rule (like low balance), pass it straight through
+        if (initErr.isOperational) {
+            return next(new AppError(initErr.message, "", initErr.statusCode || 400));
+        }
+
+        // Safely fail early since no transaction was written and the user wasn't debited
+        return next(new AppError("System busy. Please try again shortly.", "", 500));
+    }
 
     if (context.isDuplicate) {
         return res.status(200).json({
@@ -104,7 +118,7 @@ exports.buyData = catchAsync(async (req, res, next) => {
     }
 
     try {
-        //Call the unified processor engine
+        // Call the unified processor engine
         const finalStatus = await providerService.processGsubzTransaction({
             context,
             serviceType: "data",
@@ -114,17 +128,26 @@ exports.buyData = catchAsync(async (req, res, next) => {
             payload: { serviceId, plan, phone, providerRequestId: context.providerRequestId }
         });
 
-        //SUCCESS HOOKS: Run only if the unified processor confirmed true success
+        // SUCCESS HOOKS: Run only if the unified processor confirmed true success
         if (finalStatus === "success") {
             if (req.user.referralId) {
-                const referrer = await User.findOne({ where: { accountId: req.user.referralId } });
-                if (referrer && referrer.id !== req.user.id) {
-                    const referralWallet = await Wallet.findOne({ where: { userId: referrer.id } });
-                    if (referralWallet) {
-                        referralWallet.referralBalance += 2;
-                        await referralWallet.save();
+                await sequelize.transaction(async (t) => {
+                    const referrer = await User.findOne({
+                        where: { accountId: req.user.referralId },
+                        transaction: t
+                    });
+                    if (referrer && referrer.id !== req.user.id) {
+                        const referralWallet = await Wallet.findOne({
+                            where: { userId: referrer.id },
+                            lock: t.LOCK.UPDATE,
+                            transaction: t
+                        });
+                        if (referralWallet) {
+                            referralWallet.referralBalance += 2;
+                            await referralWallet.save({ transaction: t });
+                        }
                     }
-                }
+                });
             }
 
             try {
@@ -137,15 +160,36 @@ exports.buyData = catchAsync(async (req, res, next) => {
     } catch (err) {
         console.error("Data runtime processing failure:", err);
         if (context && context.tx) {
-            await context.tx.update({
-                status: "pending",
-                deliveryMessage: err.message || "Network connection error"
-            });
+            try {
+                // Safe database fallback update
+                await context.tx.update({
+                    status: "pending",
+                    deliveryMessage: err.message || "Network connection error"
+                });
+            } catch (dbErr) {
+                console.error("Critical: Database pool dropped during fallback logging:", dbErr.message);
+            }
         }
     }
 
-    //Output uniform response structure
-    const output = await transactionService.getResponsePayload(context.tx.id);
+    // 2. Output uniform response structure safely
+    let output;
+    try {
+        output = await transactionService.getResponsePayload(context.tx.id);
+    } catch (payloadErr) {
+        console.error("Failed fetching live data payload from DB, serving fallback memory state:", payloadErr.message);
+        output = {
+            service: plansRes.data.service || selectedPlan.displayName,
+            amount: sellingPrice,
+            status: "pending",
+            beneficiary: phone,
+            token: null,
+            ref: 'N/A',
+            deliveryMessage: "Transaction processing. Check status shortly.",
+            createdAt: new Date()
+        };
+    }
+
     return res.status(200).json({
         status: "success",
         message: output.status === "success"

@@ -12,27 +12,28 @@ module.exports = (sequelize, DataTypes) => {
   }
 
   Settings.init({
+    //PLATFORM SETTINGS
     platformName: {
       type: DataTypes.STRING,
-      defaultValue: 'Vico'
+      defaultValue: 'Winsubz'
     },
     adminEmail: {
       type: DataTypes.STRING,
-      defaultValue: 'noblegodwin02@gmail.com',
+      defaultValue: 'godwinhigh2@gmail.com',
       validate: {
         isEmail: { msg: 'Please provide a valid admin email address' }
       }
     },
     supportEmail: {
       type: DataTypes.STRING,
-      defaultValue: 'noblegodwin02@gmail.com',
+      defaultValue: 'winsubz@winsubz.com',
       validate: {
         isEmail: { msg: 'Please provide a valid support email address' }
       }
     },
     supportPhone: {
       type: DataTypes.STRING,
-      defaultValue: '08144098649',
+      defaultValue: '09076813524',
     },
     defaultCurrency: {
       type: DataTypes.STRING(3),
@@ -86,7 +87,60 @@ module.exports = (sequelize, DataTypes) => {
       validate: {
         isUrl: { msg: 'Please provide a valid tiktok profile link' }
       }
-    }
+    },
+
+    //REWARD SETTINGS
+    rewardModalTitle: {
+      type: DataTypes.STRING,
+      defaultValue: 'Winsubz Monthly Reward'
+    },
+
+    rewardModalMessage: {
+      type: DataTypes.STRING,
+      defaultValue: 'Top 3 users by transaction volume win airtime/cash — up to ₦1,500.'
+    },
+
+    rewardRuleText: {
+      type: DataTypes.STRING,
+      defaultValue: 'Transact at least 3 times before month-end to qualify. The more you use Winsubz, the higher your chances.'
+    },
+
+    rewardModalActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true
+    },
+
+    minTransactions: {
+      type: DataTypes.INTEGER,
+      defaultValue: 3,
+      validate: {
+        isInt: { msg: 'Minimum transactions must be an integer' },
+        min: { args: [1], msg: 'Minimum transactions must be at least 1' }
+      }
+    },
+
+    winnersCount: {
+      type: DataTypes.INTEGER,
+      defaultValue: 3,
+      validate: {
+        isInt: { msg: 'Winners count must be an integer' },
+        min: { args: [1], msg: 'Winners count must be at least 1' }
+      }
+    },
+
+    leaderboardLimit: {
+      type: DataTypes.INTEGER,
+      defaultValue: 10,
+      validate: {
+        isInt: { msg: 'Leaderboard limit must be an integer' },
+        min: { args: [1], msg: 'Leaderboard limit must be at least 1' }
+      }
+    },
+    excludedUserIds: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: '7', // comma-separated user IDs to exclude from leaderboard (e.g. test/personal accounts)
+    },
   }, {
     sequelize,
     modelName: 'Settings',

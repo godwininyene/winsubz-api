@@ -58,17 +58,31 @@ exports.buyElectricity = catchAsync(async (req, res, next) => {
   const sellingPrice = faceValue;
   const requestId = `EL-${Date.now()}-${req.user.id}`;
 
-  const context = await transactionService.initialize({
-    userId: req.user.id,
-    type: "electricity",
-    provider: "peyflex",
-    serviceId: "electricity",
-    serviceName: plan.replace("-", " ").toUpperCase(),
-    beneficiary: meter,
-    faceValue,
-    sellingPrice,
-    requestId
-  });
+  let context;
+  // 1. Initialize row locking and ledger creations securely with explicit error safety
+  try {
+    context = await transactionService.initialize({
+      userId: req.user.id,
+      type: "electricity",
+      provider: "peyflex",
+      serviceId: "electricity",
+      serviceName: plan.replace("-", " ").toUpperCase(),
+      beneficiary: meter,
+      faceValue,
+      sellingPrice,
+      requestId
+    });
+  } catch (initErr) {
+    console.error("Critical: Data transaction failed to initialize in DB:", initErr.message);
+    //If it's a known business validation rule (like low balance), pass it straight through
+    if (initErr.isOperational) {
+      return next(new AppError(initErr.message, "", initErr.statusCode || 400));
+    }
+
+    // Safely fail early since no transaction was written and the user wasn't debited
+    return next(new AppError("System busy. Please try again shortly.", "", 500));
+  }
+
 
   if (context.isDuplicate) {
     return res.status(200).json({

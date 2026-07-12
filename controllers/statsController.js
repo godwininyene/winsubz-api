@@ -1,4 +1,4 @@
-const { Wallet, User, Transaction, sequelize, VTUTransaction } = require("../models");
+const { Wallet, User, Transaction, sequelize, VTUTransaction, Settings } = require("../models");
 const APIFeatures = require("../utils/apiFeatures");
 const catchAsync = require("../utils/catchAsync");
 const { Op, fn, col, literal } = require("sequelize");
@@ -290,6 +290,233 @@ exports.getAdminChartData = catchAsync(async (req, res, next) => {
     data: { transactionVolume, userGrowth, transactionTypes },
   });
 });
+
+
+/**
+ * =========================================================
+ * Get Leaderboard (Top Customers)
+ * Supports filter: week | month | year (default: month)
+ * Ranked by transaction volume (sellingPrice), with
+ * profit and transaction count also returned.
+ *
+ * minTransactions, winnersCount, and limit default to
+ * whatever is configured in Settings, so the admin can
+ * change reward rules without a redeploy. Query params
+ * still override, if explicitly passed.
+ * =========================================================
+ */
+exports.getLeaderboard = catchAsync(async (req, res, next) => {
+  const { period = "month" } = req.query;
+  const now = new Date();
+
+  const settings = (await Settings.findByPk(1)) || {};
+
+  const limit = req.query.limit ? Number(req.query.limit) : (settings.leaderboardLimit ?? 10);
+  const minTransactions = req.query.minTransactions
+    ? Number(req.query.minTransactions)
+    : (settings.minTransactions ?? 3);
+  const winnersCount = req.query.winnersCount
+    ? Number(req.query.winnersCount)
+    : (settings.winnersCount ?? 3);
+
+  // Parse "7,12,15" -> [7, 12, 15], ignoring blanks/whitespace
+  const excludedUserIds = (settings.excludedUserIds || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .map(Number);
+
+  let startDate, endDate;
+
+  if (period === "week") {
+    const dayOfWeek = now.getDay();
+    startDate = new Date(now);
+    startDate.setDate(now.getDate() - dayOfWeek);
+    startDate.setHours(0, 0, 0, 0);
+
+    endDate = new Date(now);
+    endDate.setDate(now.getDate() + (6 - dayOfWeek));
+    endDate.setHours(23, 59, 59, 999);
+  } else if (period === "year") {
+    startDate = new Date(now.getFullYear(), 0, 1);
+    endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+  } else {
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  }
+
+  const whereClause = {
+    status: "success",
+    createdAt: { [Op.between]: [startDate, endDate] },
+  };
+
+  if (excludedUserIds.length) {
+    whereClause.userId = { [Op.notIn]: excludedUserIds };
+  }
+
+  const leaderboard = await VTUTransaction.findAll({
+    attributes: [
+      "userId",
+      [fn("COALESCE", fn("SUM", col("sellingPrice")), 0), "volume"],
+      [fn("COALESCE", fn("SUM", col("profit")), 0), "profitGenerated"],
+      [fn("COUNT", col("VTUTransaction.id")), "transactionsCount"],
+    ],
+    include: [
+      {
+        model: User,
+        as: "user",
+        attributes: ["firstName", "lastName", "email"],
+      },
+    ],
+    where: whereClause,
+    group: ["userId", "user.id"],
+    having: literal(`COUNT(\`VTUTransaction\`.\`id\`) >= ${minTransactions}`),
+    order: [[literal("volume"), "DESC"]],
+    limit,
+    subQuery: false,
+  });
+
+  const formatted = leaderboard.map((row, index) => {
+    const plain = row.get({ plain: true });
+    return {
+      rank: index + 1,
+      isWinner: index < winnersCount,
+      userId: plain.userId,
+      name: `${plain.user?.firstName || ""} ${plain.user?.lastName || ""}`.trim(),
+      email: plain.user?.email || null,
+      volume: Number(plain.volume || 0),
+      profitGenerated: Number(plain.profitGenerated || 0),
+      transactionsCount: Number(plain.transactionsCount || 0),
+    };
+  });
+
+  res.status(200).json({
+    status: "success",
+    period,
+    minTransactions,
+    winnersCount,
+    results: formatted.length,
+    data: { leaderboard: formatted },
+  });
+});
+
+
+/**
+ * =========================================================
+ * Get Leaderboard (User-Facing)
+ * Privacy-safe version for the logged-in user's dashboard:
+ *  - Top winners shown with masked names (first name + last
+ *    initial), NO email, NO exact profit figures.
+ *  - The logged-in user's own rank/volume/count is returned
+ *    separately and privately — visible only to them,
+ *    regardless of whether they're in the top winners or not.
+ *
+ * Supports filter: week | month | year (default: month)
+ * =========================================================
+ */
+exports.getUserLeaderboard = catchAsync(async (req, res, next) => {
+  const { period = "month" } = req.query;
+  const userId = req.user.id;
+  const now = new Date();
+
+  const settings = (await Settings.findByPk(1)) || {};
+  const minTransactions = settings.minTransactions ?? 3;
+  const winnersCount = settings.winnersCount ?? 3;
+  const excludedUserIds = (settings.excludedUserIds || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .map(Number);
+
+  let startDate, endDate;
+
+  if (period === "week") {
+    const dayOfWeek = now.getDay();
+    startDate = new Date(now);
+    startDate.setDate(now.getDate() - dayOfWeek);
+    startDate.setHours(0, 0, 0, 0);
+
+    endDate = new Date(now);
+    endDate.setDate(now.getDate() + (6 - dayOfWeek));
+    endDate.setHours(23, 59, 59, 999);
+  } else if (period === "year") {
+    startDate = new Date(now.getFullYear(), 0, 1);
+    endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+  } else {
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  }
+
+  const whereClause = {
+    status: "success",
+    createdAt: { [Op.between]: [startDate, endDate] },
+  };
+
+  if (excludedUserIds.length) {
+    whereClause.userId = { [Op.notIn]: excludedUserIds };
+  }
+
+  // Full ranking (no limit) — needed to find the current user's
+  // true rank even if they're outside the top winners.
+  const allRanked = await VTUTransaction.findAll({
+    attributes: [
+      "userId",
+      [fn("COALESCE", fn("SUM", col("sellingPrice")), 0), "volume"],
+      [fn("COUNT", col("VTUTransaction.id")), "transactionsCount"],
+    ],
+    include: [
+      {
+        model: User,
+        as: "user",
+        attributes: ["firstName", "lastName"],
+      },
+    ],
+    where: whereClause,
+    group: ["userId", "user.id"],
+    order: [[literal("volume"), "DESC"]],
+    subQuery: false,
+  });
+
+  const plainRanked = allRanked.map((row) => row.get({ plain: true }));
+
+  // Masked public list — top winners only, no email, no profit, name truncated
+  const topWinners = plainRanked.slice(0, winnersCount).map((row, index) => ({
+    rank: index + 1,
+    name: `${row.user?.firstName || "User"} ${(row.user?.lastName || "").charAt(0)}${row.user?.lastName ? "." : ""}`,
+    volume: Number(row.volume || 0),
+  }));
+
+  // Find the logged-in user's own standing, wherever they rank
+  const myIndex = plainRanked.findIndex((row) => row.userId === userId);
+  const myRow = myIndex !== -1 ? plainRanked[myIndex] : null;
+
+  const myTransactionsCount = Number(myRow?.transactionsCount || 0);
+  const qualifies = myTransactionsCount >= minTransactions;
+
+  const currentUser = {
+    rank: myIndex !== -1 ? myIndex + 1 : null,
+    volume: Number(myRow?.volume || 0),
+    transactionsCount: myTransactionsCount,
+    qualifies,
+    transactionsNeeded: qualifies ? 0 : Math.max(minTransactions - myTransactionsCount, 0),
+    isWinner: myIndex !== -1 && myIndex < winnersCount,
+  };
+
+  res.status(200).json({
+    status: "success",
+    period,
+    minTransactions,
+    winnersCount,
+    data: {
+      topWinners,
+      currentUser,
+    },
+  });
+});
+
+
+
+
 
 /**
  * =========================================================

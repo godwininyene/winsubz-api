@@ -55,7 +55,7 @@ exports.verifyCableCard = catchAsync(async (req, res, next) => {
 
     try {
         const response = await axios.post(
-            `${BASE_URL}/cable/verify/`, 
+            `${BASE_URL}/cable/verify/`,
             { iuc, identifier },
             { headers: { Authorization: `Token ${process.env.PEYFLEX_API_KEY}` } }
         );
@@ -70,6 +70,8 @@ exports.verifyCableCard = catchAsync(async (req, res, next) => {
             data: { customer: data.customer_name }
         });
     } catch (error) {
+        console.log('PROVIDER RESPONSE', error.response);
+        
         if (error.response) {
             const message = error.response.data?.responseMessage || error.response.data?.message || "Unable to verify cable IUC";
             return next(new AppError(message, "", error.response.status));
@@ -100,19 +102,32 @@ exports.buyCableSub = catchAsync(async (req, res, next) => {
     const faceValue = Number(selectedPlan.amount);
     const sellingPrice = faceValue;
 
-    // Secure database initialization context using row locking
-    const context = await transactionService.initialize({
-        userId: req.user.id,
-        type: "cable",
-        provider: "peyflex",
-        serviceId: identifier,
-        serviceName: `${identifier.toUpperCase()} ${selectedPlan.display || selectedPlan.plan_code}`,
-        beneficiary: iuc,
-        faceValue,
-        sellingPrice,
-        requestId,
-        extraFields: { planCode: plan, planLabel: selectedPlan.description ||selectedPlan.display }
-    });
+    // 🚀 WRAPPED INITIALIZATION FOR TRANSACTION SAFETY
+    let context;
+    try {
+        context = await transactionService.initialize({
+            userId: req.user.id,
+            type: "cable",
+            provider: "peyflex",
+            serviceId: identifier,
+            serviceName: `${identifier.toUpperCase()} ${selectedPlan.display || selectedPlan.plan_code}`,
+            beneficiary: iuc,
+            faceValue,
+            sellingPrice,
+            requestId,
+            extraFields: { planCode: plan, planLabel: selectedPlan.description || selectedPlan.display }
+        });
+    } catch (err) {
+        console.error("Critical: Data transaction failed to initialize in DB:", initErr.message);
+
+        //If it's a known business validation rule (like low balance), pass it straight through
+        if (initErr.isOperational) {
+            return next(new AppError(initErr.message, "", initErr.statusCode || 400));
+        }
+
+        // Safely fail early since no transaction was written and the user wasn't debited
+        return next(new AppError("System busy. Please try again shortly.", "", 500));
+    }
 
     if (context.isDuplicate) {
         return res.status(200).json({
@@ -121,39 +136,18 @@ exports.buyCableSub = catchAsync(async (req, res, next) => {
         });
     }
 
-    let resData = {};
-    try {
-        // resData = await providerService.dispatch("peyflex", "cable", {
-        //     identifier, plan, iuc, phone, amount: faceValue
-        // });
-        resData = await providerService.dispatch("peyflex", "cable", {
-            identifier, plan, iuc, phone, amount: 100
-        });
-    } catch (err) {
-        resData = err.response?.data || {};
-    }
-
-    const success = resData.status === "SUCCESSFUL" || resData.status === "SUCCESS";
-    const actualCost = getCostPrice("peyflex", faceValue, { type: "cable" });
-
-    if (!success) {
-        await transactionService.processRefund(context.tx, context.wallet, sellingPrice);
-    } else {
-        await context.tx.update({
-            status: "success",
-            providerStatus: resData.status || null,
-            providerRef: resData.reference || null,
-            costPrice: Math.round(actualCost),
-            amountPaid: actualCost,
-            profit: Math.round(sellingPrice - actualCost),
-            providerDiscount: Math.round(Math.max(faceValue - actualCost, 0)),
-            finalBalance: context.wallet.vtuBalance
-        });
-    }
+    // Hand everything off safely to our orchestrator pipeline
+    const { status, resData } = await providerService.processPeyflexTransaction({
+        context,
+        serviceType: "cable",
+        payload: { identifier, plan, iuc, phone, faceValue },
+        faceValue,
+        sellingPrice
+    });
 
     const output = await transactionService.getResponsePayload(context.tx.id);
 
-    if (success) {
+    if (status === "success") {
         return res.status(200).json({
             status: "success",
             data: { transaction: output }

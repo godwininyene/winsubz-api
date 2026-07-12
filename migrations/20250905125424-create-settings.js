@@ -10,21 +10,22 @@ module.exports = {
         primaryKey: true,
         type: Sequelize.INTEGER
       },
+      // PLATFORM SETTINGS
       platformName: {
         type: Sequelize.STRING,
-        defaultValue: 'Vico'
+        defaultValue: 'Winsubz'
       },
       adminEmail: {
         type: Sequelize.STRING,
-        defaultValue: 'admin@vico.com'
+        defaultValue: 'godwinhigh2@gmail.com'
       },
       supportEmail: {
         type: Sequelize.STRING,
-        defaultValue: 'support@vico.com'
+        defaultValue: 'winsubz@winsubz.com'
       },
-      supportPhone:{
+      supportPhone: {
         type: Sequelize.STRING,
-        defaultValue: '08144098649'
+        defaultValue: '09076813524'
       },
       defaultCurrency: {
         type: Sequelize.STRING(3),
@@ -58,6 +59,43 @@ module.exports = {
         type: Sequelize.STRING,
         allowNull: true
       },
+
+      // REWARD SETTINGS
+      rewardModalTitle: {
+        type: Sequelize.STRING,
+        defaultValue: 'Winsubz Monthly Reward'
+      },
+      rewardModalMessage: {
+        type: Sequelize.STRING,
+        defaultValue: 'Top 3 users by transaction volume win airtime/cash — up to ₦1,500.'
+      },
+      rewardRuleText: {
+        type: Sequelize.STRING,
+        defaultValue: 'Transact at least 3 times before month-end to qualify. The more you use Winsubz, the higher your chances.'
+      },
+      rewardModalActive: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: true
+      },
+      minTransactions: {
+        type: Sequelize.INTEGER,
+        defaultValue: 3
+      },
+      winnersCount: {
+        type: Sequelize.INTEGER,
+        defaultValue: 3
+      },
+      leaderboardLimit: {
+        type: Sequelize.INTEGER,
+        defaultValue: 10
+      },
+      excludedUserIds: {
+        type: Sequelize.STRING,
+        allowNull: true,
+        defaultValue: '7', // comma-separated user IDs to exclude from leaderboard (e.g. test/personal accounts)
+      },
+
+      // TIMESTAMPS
       createdAt: {
         allowNull: false,
         type: Sequelize.DATE
@@ -68,14 +106,23 @@ module.exports = {
       }
     });
 
-    // Insert default settings
+    // Insert default settings row
     await queryInterface.bulkInsert('settings', [{
-      platformName: 'Vico',
-      adminEmail: 'noblegodwin02@gmail.com',
-      supportEmail: 'support@vico.com',
-      supportPhone:"08144098649",
+      id: 1, // Explicitly set to 1 to match your model's singleton hooks
+      platformName: 'Winsubz',
+      adminEmail: 'godwinhigh2@gmail.com', // Updated to match model
+      supportEmail: 'winsubz@winsubz.com',
+      supportPhone: '09076813524',
       defaultCurrency: 'NGN',
       maintenanceMode: false,
+      rewardModalTitle: 'Winsubz Monthly Reward',
+      rewardModalMessage: 'Top 3 users by transaction volume win airtime/cash — up to ₦1,500.',
+      rewardRuleText: 'Transact at least 3 times before month-end to qualify. The more you use Winsubz, the higher your chances.',
+      rewardModalActive: true,
+      minTransactions: 3,
+      winnersCount: 3,
+      leaderboardLimit: 10,
+      excludedUserIds: '7',
       createdAt: new Date(),
       updatedAt: new Date()
     }]);

@@ -7,13 +7,13 @@ exports.getSettings = catchAsync(async (req, res) => {
         // Create default settings if they don't exist
         const defaultSettings = await Settings.create({
             id: 1,
-            platformName: 'Vico Exchange',
-            adminEmail: 'noblegodwin02@gmail.com',
-            supportEmail: 'godwinhigh@gmail.com',
-            supportPhone: '08144098649',
+            platformName: 'Winsubz',
+            adminEmail: 'godwinhigh2@gmail.com',
+            supportEmail: 'winsubz@winsubz.com',
+            supportPhone: '09076813524',
             defaultCurrency: 'NGN',
             maintenanceMode: false,
-            facebookUrl: 'https://web.facebook.com/godwin.inyene.5',
+            facebookUrl: 'https://web.facebook.com/profile.php?id=61580933354656',
             twitterUrl: null,
             instagramUrl: 'https://www.instagram.com/wintechsystems_2/',
             linkedinUrl: 'https://www.linkedin.com/in/godwin-inyene-598714233/',

@@ -6,7 +6,7 @@ const normalizeProviderResponse = require('./../utils/normalizeProviderResponse'
 const transactionService = require('../services/transactionService');
 const providerService = require('../services/providerService');
 const promoService = require('../services/promoService');
-const { VTUTransaction, Wallet, User } = require("../models");
+const { VTUTransaction, Wallet, User, sequelize } = require("../models");
 
 function applyMarkup(amount) {
     const RATE = 0.03; // 3%
@@ -131,23 +131,29 @@ exports.buyData = catchAsync(async (req, res, next) => {
         // SUCCESS HOOKS: Run only if the unified processor confirmed true success
         if (finalStatus === "success") {
             if (req.user.referralId) {
-                await sequelize.transaction(async (t) => {
-                    const referrer = await User.findOne({
-                        where: { accountId: req.user.referralId },
-                        transaction: t
-                    });
-                    if (referrer && referrer.id !== req.user.id) {
-                        const referralWallet = await Wallet.findOne({
-                            where: { userId: referrer.id },
-                            lock: t.LOCK.UPDATE,
+                try {
+                    await sequelize.transaction(async (t) => {
+                        const referrer = await User.findOne({
+                            where: { accountId: req.user.referralId },
                             transaction: t
                         });
-                        if (referralWallet) {
-                            referralWallet.referralBalance += 2;
-                            await referralWallet.save({ transaction: t });
+                        if (referrer && referrer.id !== req.user.id) {
+                            const referralWallet = await Wallet.findOne({
+                                where: { userId: referrer.id },
+                                lock: t.LOCK.UPDATE,
+                                transaction: t
+                            });
+                            if (referralWallet) {
+                                referralWallet.referralBalance += 2;
+                                await referralWallet.save({ transaction: t });
+                            }
                         }
-                    }
-                });
+                    });
+                } catch (referralErr) {
+                    // Log it, but the transaction itself already succeeded —
+                    // never let this crash cascade into the outer catch below.
+                    console.error(`Referral bonus crediting failed for TX ${context.tx.id}:`, referralErr.message);
+                }
             }
 
             try {

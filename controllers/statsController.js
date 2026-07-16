@@ -1,4 +1,4 @@
-const { Wallet, User, Transaction, sequelize, VTUTransaction, Settings } = require("../models");
+const { Wallet, User, Transaction, Funding, sequelize, VTUTransaction, Settings } = require("../models");
 const APIFeatures = require("../utils/apiFeatures");
 const catchAsync = require("../utils/catchAsync");
 const { Op, fn, col, literal } = require("sequelize");
@@ -57,7 +57,8 @@ const getRecentVtuTransactions = async (req) => {
  * - Crypto volume
  * - Giftcard volume
  * - VTU volume
- * - VTU profit (NEW)
+ * - VTU profit
+ * - Outstanding VTU Balance (NEW)
  * =========================================================
  */
 exports.getStatsForAdmin = catchAsync(async (req, res, next) => {
@@ -72,19 +73,32 @@ exports.getStatsForAdmin = catchAsync(async (req, res, next) => {
   const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
 
   /**
-   * Helper: fetch stats within a date range
+   * Helper: fetch stats within a date range.
+   * Pass { startDate: null, endDate: null } to get ALL-TIME totals
+   * (no date restriction at all).
    */
   const getStats = async (startDate, endDate) => {
+    const dateFilter = startDate && endDate ? { [Op.between]: [startDate, endDate] } : undefined;
+
     // Count active users (excluding admins)
-    const userCount = await User.count({
-      where: {
-        role: { [Op.ne]: "admin" },
-        active: true,
-        createdAt: { [Op.between]: [startDate, endDate] },
-      },
-    });
+    const userWhere = {
+      role: { [Op.ne]: "admin" },
+      active: true,
+    };
+    if (dateFilter) userWhere.createdAt = dateFilter;
+
+    const userCount = await User.count({ where: userWhere });
 
     // Aggregate crypto & giftcard transactions
+    const transactionInclude = {
+      model: Transaction,
+      as: "transactions",
+      attributes: [],
+      where: { status: "completed" },
+      required: false,
+    };
+    if (dateFilter) transactionInclude.where.createdAt = dateFilter;
+
     const transactionStats = await User.findAll({
       attributes: [
         [fn("COALESCE", fn("SUM", col("transactions.amount")), 0), "totalTransactionVolume"],
@@ -105,40 +119,39 @@ exports.getStatsForAdmin = catchAsync(async (req, res, next) => {
           "coinVolume",
         ],
       ],
-      include: [
-        {
-          model: Transaction,
-          as: "transactions",
-          attributes: [],
-          where: {
-            status: "completed",
-            createdAt: { [Op.between]: [startDate, endDate] },
-          },
-          required: false,
-        },
-      ],
+      include: [transactionInclude],
       where: { role: { [Op.ne]: "admin" }, active: true },
       raw: true,
     }).then((res) => res[0]);
 
     // Aggregate VTU stats
+    const vtuWhere = { status: "success" };
+    if (dateFilter) vtuWhere.createdAt = dateFilter;
+
     const vtuStats = await VTUTransaction.findOne({
       attributes: [
         [fn("COALESCE", fn("SUM", col("sellingPrice")), 0), "vtuVolume"],
         [fn("COUNT", col("id")), "vtuCount"],
         [
-          fn(
-            "COALESCE",
-            fn("SUM", literal("`sellingPrice` - `amountPaid`")),
-            0
-          ),
+          fn("COALESCE", fn("SUM", literal("`sellingPrice` - `amountPaid`")), 0),
           "vtuProfit",
         ],
       ],
-      where: {
-        status: "success",
-        createdAt: { [Op.between]: [startDate, endDate] },
-      },
+      where: vtuWhere,
+      raw: true,
+    });
+
+    // ==========================================
+    // DYNAMIC DEPOSITS COMPILATION
+    // ==========================================
+    const fundingWhere = { status: "success" };
+    if (dateFilter) fundingWhere.createdAt = dateFilter;
+
+    const fundingStats = await Funding.findOne({
+      attributes: [
+        [fn("COALESCE", fn("SUM", col("amount")), 0), "totalDeposits"],
+      ],
+      where: fundingWhere,
       raw: true,
     });
 
@@ -150,11 +163,50 @@ exports.getStatsForAdmin = catchAsync(async (req, res, next) => {
       vtuVolume: Number(vtuStats.vtuVolume || 0),
       vtuCount: Number(vtuStats.vtuCount || 0),
       vtuProfit: Number(vtuStats.vtuProfit || 0),
+      totalDeposits: Number(fundingStats?.totalDeposits || 0),
     };
   };
 
+  // Fetch standard stats
   const currentStats = await getStats(startOfThisMonth, endOfToday);
   const prevStats = await getStats(startOfLastMonth, endOfLastMonth);
+  const allTimeStats = await getStats(null, null);
+
+  /**
+    *Fetch Outstanding VTU Balance from Wallets
+    * Queries User model first to easily filter active non-admins,
+    * then joins their Wallet to sum the balances.
+    */
+  const vtuBalanceStats = await User.findOne({
+    attributes: [
+      [fn("COALESCE", fn("SUM", col("wallet.vtuBalance")), 0), "totalVtuBalance"],
+    ],
+    include: [{
+      model: Wallet,
+      as: "wallet", // Joins the associated Wallet model using its alias
+      attributes: [],
+    }],
+    where: {
+      role: { [Op.ne]: "admin" },
+      active: true,
+    },
+    raw: true,
+  });
+
+  const totalVtuBalance = Number(vtuBalanceStats?.totalVtuBalance || 0);
+
+  // ==========================================
+  //Fetch Total Deposits from Funding Table
+  // ==========================================
+  const totalFundingStats = await Funding.findOne({
+    attributes: [
+      [fn("COALESCE", fn("SUM", col("amount")), 0), "totalDeposits"],
+    ],
+    where: { status: "success" },
+    raw: true,
+  });
+
+  const totalDeposits = Number(totalFundingStats?.totalDeposits || 0);
 
   /**
    * Utility: percentage change
@@ -167,47 +219,61 @@ exports.getStatsForAdmin = catchAsync(async (req, res, next) => {
   const response = [
     {
       title: "Total Users",
-      total: (currentStats.totalUsers + prevStats.totalUsers).toLocaleString(),
+      total: allTimeStats.totalUsers.toLocaleString(),
       currentValue: currentStats.totalUsers,
       preValue: prevStats.totalUsers,
       change: calcChange(currentStats.totalUsers, prevStats.totalUsers),
     },
+    // {
+    //   title: "Total Transactions",
+    //   total: `₦${allTimeStats.totalTransactionVolume.toLocaleString()}`,
+    //   currentValue: `₦${currentStats.totalTransactionVolume.toLocaleString()}`,
+    //   preValue: `₦${prevStats.totalTransactionVolume.toLocaleString()}`,
+    //   change: calcChange(currentStats.totalTransactionVolume, prevStats.totalTransactionVolume),
+    // },
     {
-      title: "Total Transactions",
-      total: `₦${(currentStats.totalTransactionVolume + prevStats.totalTransactionVolume).toLocaleString()}`,
-      currentValue: `₦${currentStats.totalTransactionVolume.toLocaleString()}`,
-      preValue: `₦${prevStats.totalTransactionVolume.toLocaleString()}`,
-      change: calcChange(currentStats.totalTransactionVolume, prevStats.totalTransactionVolume),
+      title: "Total Deposits",
+      total: `₦${allTimeStats.totalDeposits.toLocaleString()}`,
+      currentValue: `₦${currentStats.totalDeposits.toLocaleString()}`,
+      preValue: `₦${prevStats.totalDeposits.toLocaleString()}`,
+      change: calcChange(currentStats.totalDeposits, prevStats.totalDeposits),
     },
     {
       title: "VTU Volume",
-      total: `₦${(currentStats.vtuVolume + prevStats.vtuVolume).toLocaleString()}`,
+      total: `₦${allTimeStats.vtuVolume.toLocaleString()}`,
       currentValue: `₦${currentStats.vtuVolume.toLocaleString()}`,
       preValue: `₦${prevStats.vtuVolume.toLocaleString()}`,
       change: calcChange(currentStats.vtuVolume, prevStats.vtuVolume),
     },
     {
       title: "VTU Profit",
-      total: `₦${(currentStats.vtuProfit + prevStats.vtuProfit).toLocaleString()}`,
+      total: `₦${allTimeStats.vtuProfit.toLocaleString()}`,
       currentValue: `₦${currentStats.vtuProfit.toLocaleString()}`,
       preValue: `₦${prevStats.vtuProfit.toLocaleString()}`,
       change: calcChange(currentStats.vtuProfit, prevStats.vtuProfit),
     },
+    // User VTU Balance snapshot (doesn't need MoM change metrics)
+    {
+      title: "Users VTU Balance",
+      total: `₦${totalVtuBalance.toLocaleString()}`,
+      currentValue: `₦${totalVtuBalance.toLocaleString()}`,
+      preValue: "N/A",
+      change: "0%",
+    },
     {
       title: "Gift Card Volume",
-      total: `₦${(currentStats.giftcardVolume + prevStats.giftcardVolume).toLocaleString()}`,
+      total: `₦${allTimeStats.giftcardVolume.toLocaleString()}`,
       currentValue: `₦${currentStats.giftcardVolume.toLocaleString()}`,
       preValue: `₦${prevStats.giftcardVolume.toLocaleString()}`,
       change: calcChange(currentStats.giftcardVolume, prevStats.giftcardVolume),
     },
     {
       title: "Crypto Volume",
-      total: `₦${(currentStats.coinVolume + prevStats.coinVolume).toLocaleString()}`,
+      total: `₦${allTimeStats.coinVolume.toLocaleString()}`,
       currentValue: `₦${currentStats.coinVolume.toLocaleString()}`,
       preValue: `₦${prevStats.coinVolume.toLocaleString()}`,
       change: calcChange(currentStats.coinVolume, prevStats.coinVolume),
     },
-
   ];
 
   const recentVtuTransactions = await getRecentVtuTransactions(req);
@@ -221,7 +287,7 @@ exports.getStatsForAdmin = catchAsync(async (req, res, next) => {
 /**
  * =========================================================
  * Get chart data for Admin dashboard
- * (Crypto + Giftcards)
+ * (Crypto + Giftcards + Successful Deposits Trend)
  * =========================================================
  */
 exports.getAdminChartData = catchAsync(async (req, res, next) => {
@@ -283,11 +349,32 @@ exports.getAdminChartData = catchAsync(async (req, res, next) => {
     raw: true,
   });
 
-
+  // =========================================================
+  //Successful deposits trend over time
+  // =========================================================
+  const depositTrend = await Funding.findAll({
+    attributes: [
+      [fn("DATE", col("createdAt")), "date"],
+      [fn("COALESCE", fn("SUM", col("amount")), 0), "totalAmount"],
+      [fn("COUNT", col("id")), "depositCount"],
+    ],
+    where: {
+      status: "success",
+      createdAt: { [Op.between]: [startDate, endDate] },
+    },
+    group: [fn("DATE", col("createdAt"))],
+    order: [[fn("DATE", col("createdAt")), "ASC"]],
+    raw: true,
+  });
 
   res.status(200).json({
     status: "success",
-    data: { transactionVolume, userGrowth, transactionTypes },
+    data: {
+      transactionVolume,
+      userGrowth,
+      transactionTypes,
+      depositTrend
+    },
   });
 });
 

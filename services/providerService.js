@@ -1,9 +1,12 @@
 const axios = require('../lib/axios');
 const rawAxios = require('axios');
-const normalizeProviderResponse =require('./../utils/normalizeProviderResponse')
+const normalizeProviderResponse = require('./../utils/normalizeProviderResponse')
 const sanitizeDeliveryMessage = require('./../utils/sanitizeDeliveryMessage');
 const getCostPrice = require('./../utils/getCostPrice');
 const transactionService = require('./transactionService');
+const { sequelize } = require("../models");
+
+const OWLET_BASE_URL = process.env.OWLET_API_URL;
 
 /**
  * Standardizes outbound provider API communications
@@ -19,6 +22,8 @@ class ProviderService {
     }
     return await this[method](payload);
   }
+
+
 
   // --- GSUBZ IMPLEMENTATIONS ---
   async gsubz_data(payload) {
@@ -128,6 +133,127 @@ class ProviderService {
 
     return status; // Return final execution status string for controller success hooks
   }
+
+  // --- OWLET SMM IMPLEMENTATIONS ---
+
+  // Fetch the live service catalog (id, name, rate per 1000, min/max)
+  async owlet_services() {
+    const res = await rawAxios.post(OWLET_BASE_URL, {
+      key: process.env.OWLET_API_KEY,
+      action: 'services'
+    });
+    return res.data; // array of { service, name, type, category, rate, min, max, refill, cancel }
+  }
+
+  // Place an order
+  async owlet_add(payload) {
+    const res = await rawAxios.post(OWLET_BASE_URL, {
+      key: process.env.OWLET_API_KEY,
+      action: 'add',
+      service: payload.serviceId,
+      link: payload.link,
+      quantity: payload.quantity
+    });
+    return res.data; // { order: <id> } or { error: "..." }
+  }
+
+  // Check order status
+  async owlet_status(providerOrderId) {
+    const res = await rawAxios.post(OWLET_BASE_URL, {
+      key: process.env.OWLET_API_KEY,
+      action: 'status',
+      order: providerOrderId
+    });
+    return res.data; // { charge, start_count, status, remains, currency }
+  }
+  // Check our Owlet wallet balance (useful for an admin low-balance alert)
+  async owlet_balance() {
+    const res = await rawAxios.post(OWLET_BASE_URL, {
+      key: process.env.OWLET_API_KEY,
+      action: 'balance'
+    });
+    return res.data; // { balance, currency }
+  }
+
+
+  /**
+  * 🚀 UNIFIED ORCHESTRATOR FOR OWLET WORKFLOWS
+  * Connects cleanly to the transaction pipeline with managed rollbacks on direct failures
+  */
+  async processOwletTransaction({ context, serviceId, link, quantity, costPrice, sellingPrice }) {
+    const smmTransactionService = require('./smmTransactionService');
+    try {
+      const resData = await this.dispatch("owlet", "add", { serviceId, link, quantity });
+      console.log("PROVIDER OWLET ADD RESPONSE:", resData);
+
+      // Handle explicit errors returned upstream by SMM endpoint
+      if (resData?.error) {
+        // Mask operational balance issues so we do not leak business details to the user
+        const isProviderLowFunds = resData.error.toLowerCase().includes("funds") || resData.error.toLowerCase().includes("balance");
+        const userFacingMessage = isProviderLowFunds
+          ? "Service temporarily unavailable due to upstream provider maintenance."
+          : `Provider rejected request: ${resData.error}`;
+
+        await sequelize.transaction(async (t) => {
+          await smmTransactionService.processRefund(context.tx, context.wallet, context.tx.sellingPrice, t);
+
+          const postRefundBalance = Number((Number(context.wallet.vtuBalance) + Number(context.tx.sellingPrice)).toFixed(4));
+
+          await context.tx.update({
+            status: "failed",
+            providerStatus: resData.error, // Safe to keep raw string internally inside DB for internal logging
+            deliveryMessage: userFacingMessage, // Safe masked message displayed on the user's dashboard/Postman
+            isRefunded: true,
+            finalBalance: postRefundBalance,
+          }, { transaction: t });
+        });
+        return "failed";
+      }
+
+      if (!resData?.order) {
+        await context.tx.update({
+          status: "pending",
+          providerStatus: "unknown_response",
+          deliveryMessage: "Unexpected response from provider — awaiting manual check.",
+          finalBalance: Number(context.wallet.vtuBalance),
+        });
+        return "pending";
+      }
+
+      // Order successfully passed downstream to processing pipeline
+      // Order successfully passed downstream to processing pipeline
+      // Order accepted — Owlet orders start as "Pending"/"In progress" on
+      // their end and complete asynchronously, unlike gsubz's near-instant
+      // data/airtime delivery. So this stays "processing", not "success",
+      // until a status check confirms completion.
+      const calculatedProfit = Number((Number(sellingPrice) - Number(costPrice)).toFixed(4));
+
+      await context.tx.update({
+        status: "processing",
+        providerOrderId: String(resData.order),
+        providerStatus: "Pending",
+        deliveryMessage: "Order placed successfully — delivery currently in progress.",
+        costPrice: Number(Number(costPrice).toFixed(4)),
+        profit: calculatedProfit,
+        finalBalance: Number(context.wallet.vtuBalance),
+      });
+
+      return "processing";
+
+    } catch (error) {
+      console.error("Critical failure during Owlet pipeline execution step:", error.message);
+
+      // Keep transaction logs stable as pending so that fallback sync crons can evaluate state safely later
+      await context.tx.update({
+        status: "pending",
+        providerStatus: "network_dispatch_error",
+        deliveryMessage: "System encountered a temporary connection issue. Your order state will sync automatically."
+      });
+      return "pending";
+    }
+  }
+
+
 
   // --- PEYFLEX IMPLEMENTATIONS ---
   async peyflex_electricity(payload) {

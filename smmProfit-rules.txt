@@ -1,0 +1,14 @@
+How the New Numbers Play Out:
+
+On a cheap ₦200 package: 20% of ₦200 is only ₦40. With the new rule, 
+the system skips that entirely and injects the ₦150 minimum profit,
+making the final selling price ₦350. You actually make a meaningful margin here.
+
+On a mid-range ₦1,000 package: 20% of ₦1,000 is ₦200. 
+Since ₦200 is safely above your new ₦150 floor, it applies the exact 20% rate,
+making the selling price ₦1,200.
+
+On a massive ₦10,000 bulk package: 20% of ₦10,000 would be ₦2,000.
+The new ₦1,500 cap steps in to keep your prices highly competitive for bulk buyers,
+making the final selling price ₦11,500 while still landing you a clean ₦1,500 profit
+on a single transaction.

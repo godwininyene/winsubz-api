@@ -1,4 +1,4 @@
-const { Wallet, User, Transaction, Funding, sequelize, VTUTransaction, Settings } = require("../models");
+const { Wallet, User, Transaction, Funding, sequelize, VTUTransaction, SmmTransaction, Settings } = require("../models");
 const APIFeatures = require("../utils/apiFeatures");
 const catchAsync = require("../utils/catchAsync");
 const { Op, fn, col, literal } = require("sequelize");
@@ -47,6 +47,50 @@ const getRecentVtuTransactions = async (req) => {
   const transactions = await VTUTransaction.findAll(features.getFeaures());
   //Send Response
   return transactions
+};
+
+/**
+ * =========================================================
+ * Get recent SMM transactions (last 7 days)
+ * Used on Admin dashboard
+ * =========================================================
+ */
+const getRecentSmmTransactions = async (req) => {
+  req.query.limit = 5;
+  req.query.sort = "-createdAt";
+  req.query.fields =
+    "id,platform,serviceName,link,quantity,costPrice,sellingPrice,status,startCount,remains,requestId,createdAt";
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const formattedDate = sevenDaysAgo.toISOString();
+  req.query.createdAt = { gte: formattedDate };
+
+  const features = new APIFeatures(req.query, "SmmTransaction")
+    .filter()
+    .sort()
+    .limitFields()
+    .paginate();
+
+  // Restrict transactions for regular users to only their own
+  if (req.user?.role === "user") {
+    features.queryOptions.where = {
+      ...features.queryOptions.where,
+      userId: req.user.id,
+    };
+  }
+
+  // Include user info block if administrative access flag is contextually present
+  if (req.user?.role === "admin") {
+    features.queryOptions.include.push({
+      model: User,
+      as: "user",
+      attributes: ["firstName", "lastName", "photo", "email"],
+    });
+  }
+
+  const transactions = await SmmTransaction.findAll(features.getFeaures());
+  return transactions;
 };
 
 /**
@@ -276,11 +320,20 @@ exports.getStatsForAdmin = catchAsync(async (req, res, next) => {
     },
   ];
 
-  const recentVtuTransactions = await getRecentVtuTransactions(req);
+
+  // Fetch recent records for both models in parallel
+  const [recentVtuTransactions, recentSmmTransactions] = await Promise.all([
+    getRecentVtuTransactions(req),
+    getRecentSmmTransactions(req)
+  ]);
 
   res.status(200).json({
     status: "success",
-    data: { stats: response, recentVtuTransactions },
+    data: {
+      stats: response,
+      recentVtuTransactions,
+      recentSmmTransactions
+    },
   });
 });
 
@@ -687,10 +740,19 @@ exports.getStatsForUser = catchAsync(async (req, res, next) => {
     },
   ];
 
-  const recentVtuTransactions = await getRecentVtuTransactions(req);
+  // Fetch recent records for both models in parallel
+  const [recentVtuTransactions, recentSmmTransactions] = await Promise.all([
+    getRecentVtuTransactions(req),
+    getRecentSmmTransactions(req)
+  ]);
 
   res.status(200).json({
     status: "success",
-    data: { stats, recentVtuTransactions },
+    data: {
+      stats,
+      recentVtuTransactions,
+      recentSmmTransactions
+    },
   });
+
 });

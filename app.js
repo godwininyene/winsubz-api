@@ -24,14 +24,17 @@ const webhookRouter = require('./routes/webhookRoutes');
 const paymentRouter = require('./routes/paymentRoutes');
 const promoRouter = require('./routes/promoRoutes');
 const withdrawalRouter = require('./routes/withdrawalRoutes');
+const smmRouter = require('./routes/smmRoutes')
 
 
 //Cron jobs
 const startVerificationCron = require('./cron/verifyTransactions');
 const releasePromoCron = require('./cron/promoReleaseCron')
+const startSmmVerificationCron = require('./cron/smmVerifyCron');
 
 startVerificationCron();
 releasePromoCron()
+startSmmVerificationCron(); 
 
 
 
@@ -109,6 +112,7 @@ app.use('/api/v1/electricity', electricityRouter)
 app.use('/api/v1/cables', cableRouter)
 app.use('/api/v1/promo-codes', promoRouter);
 app.use('/api/v1/withdrawals', withdrawalRouter);
+app.use('/api/v1/smm', smmRouter);
 
 //Not found route
 app.all(/.*/, (req, res, next)=>{

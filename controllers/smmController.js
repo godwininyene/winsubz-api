@@ -2,7 +2,7 @@ const catchAsync = require('./../utils/catchAsync');
 const AppError = require('../utils/appError');
 const providerService = require('../services/providerService');
 const smmTransactionService = require('../services/smmTransactionService');
-const { SmmTransaction ,User} = require("../models");
+const { SmmTransaction, User,Sequelize } = require("../models");
 const APIFeatures = require("../utils/apiFeatures");
 const generatePaginationMeta = require("./../utils/pagination");
 
@@ -90,7 +90,7 @@ exports.getSmmServices = catchAsync(async (req, res, next) => {
 
   const formatted = filtered.map((s) => {
     const costPricePer1000 = parseFloat(s.rate);
-    
+
     // Calculate the user's selling rate for exactly 1,000 units using your business markup rules
     const { sellingPrice: userRatePer1000 } = applySmmMarkup(costPricePer1000);
 
@@ -101,7 +101,7 @@ exports.getSmmServices = catchAsync(async (req, res, next) => {
       min: parseInt(s.min, 10) || 1,
       max: parseInt(s.max, 10) || 1000000,
       refill: !!s.refill,
-      rateProviderPer1000: userRatePer1000, 
+      rateProviderPer1000: userRatePer1000,
     };
   });
 
@@ -123,14 +123,40 @@ exports.placeSmmOrder = catchAsync(async (req, res, next) => {
   if (!serviceId || !link || !quantity) {
     return next(new AppError("serviceId, link and quantity are required", "", 400));
   }
-  if (!/^https?:\/\//.test(link)) {
-    return next(new AppError("Link must be a valid URL", "", 400));
+
+
+  const sanitizedLink = link.trim();
+  if (!/^https?:\/\//i.test(sanitizedLink)) {
+    return next(new AppError("Please enter a valid link (e.g. https://...)", "", 400));
   }
 
   const qty = parseInt(quantity, 10);
   if (isNaN(qty) || qty <= 0) {
     return next(new AppError("Quantity must be a valid positive number", "", 400));
   }
+
+  // 🛑 ACTIVE ORDER GUARD: Prevent overlapping orders on the same target link
+  const activeOrder = await SmmTransaction.findOne({
+    where: {
+      userId: req.user.id,
+      link: sanitizedLink,
+      serviceId: String(serviceId),
+      status: {
+        [Sequelize.Op.in]: ["pending", "processing"]
+      }
+    }
+  });
+
+  if (activeOrder) {
+    return next(
+      new AppError(
+        "An active campaign for this link is currently processing. Please wait until it completes before placing another order.",
+        "",
+        400
+      )
+    );
+  }
+
 
   // Double-Check Cache State & populate atomically
   let rawServices = servicesCache.data;
@@ -143,8 +169,10 @@ exports.placeSmmOrder = catchAsync(async (req, res, next) => {
   if (!service) return next(new AppError("The targeted service identifier could not be validated or is currently inactive.", "", 400));
 
   // Enforce boundary parameters rigorously against upstream catalog constraints
-  if (qty < parseInt(service.min) || qty > parseInt(service.max)) {
-    return next(new AppError(`Quantity must be between ${service.min} and ${service.max}`, "", 400));
+  const minLimit = parseInt(service.min, 10) || 1;
+  const maxLimit = parseInt(service.max, 10) || 1000000;
+  if (qty < minLimit || qty > maxLimit) {
+    return next(new AppError(`Order quantity must be between ${minLimit.toLocaleString()} and ${maxLimit.toLocaleString()}`, "", 400));
   }
 
   // Calculated completely as a fluid decimal value
@@ -156,14 +184,14 @@ exports.placeSmmOrder = catchAsync(async (req, res, next) => {
     context = await smmTransactionService.initialize({
       userId: req.user.id,
       // platform: platform || extractCleanPlatform(service.name, service.category),
-      platform:  extractCleanPlatform(service.name, service.category),
+      platform: extractCleanPlatform(service.name, service.category),
       serviceId: String(serviceId),
       serviceName: serviceName || service.name,
       link: link.trim(),
       quantity: qty,
-      costPrice, 
-      sellingPrice,   
-      profit,              
+      costPrice,
+      sellingPrice,
+      profit,
       requestId,
     });
   } catch (initErr) {
@@ -196,7 +224,7 @@ exports.placeSmmOrder = catchAsync(async (req, res, next) => {
     if (context?.tx) {
       try {
         await context.tx.update({
-          status: "failed", 
+          status: "failed",
           providerStatus: err.message || "Network connection error",
           deliveryMessage: "Transaction failed during provider allocation sync setup routines."
         });

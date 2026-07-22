@@ -184,7 +184,7 @@ class ProviderService {
     const smmTransactionService = require('./smmTransactionService');
     try {
       const resData = await this.dispatch("owlet", "add", { serviceId, link, quantity });
-      console.log("PROVIDER OWLET ADD RESPONSE:", resData);
+      //console.log("PROVIDER OWLET ADD RESPONSE:", resData);
 
       // Handle explicit errors returned upstream by SMM endpoint
       if (resData?.error) {
@@ -232,7 +232,7 @@ class ProviderService {
         status: "processing",
         providerOrderId: String(resData.order),
         providerStatus: "Pending",
-        deliveryMessage: "Order placed successfully — delivery currently in progress.",
+        deliveryMessage: "Order placed successfully and is in progress. Do not place another order for this link until this is completed.",
         costPrice: Number(Number(costPrice).toFixed(4)),
         profit: calculatedProfit,
         finalBalance: Number(context.wallet.vtuBalance),

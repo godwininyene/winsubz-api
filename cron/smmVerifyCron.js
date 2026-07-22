@@ -24,7 +24,6 @@ const startSmmVerificationCron = () => {
           status: { [Op.in]: ['pending', 'processing', 'partial'] },
           isRefunded: false,
           providerOrderId: { [Op.ne]: null }, // Can only check if an order ID exists from the provider
-          verificationAttempts: { [Op.lt]: 10 } // Safeguard threshold against infinite loops
         },
         order: [['lastVerifiedAt', 'ASC']], // Prioritize checking the oldest verified entries first
         limit: 20 // Processing chunk sizing to stay clear of memory/API lockups

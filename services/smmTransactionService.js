@@ -108,53 +108,71 @@ class SmmTransactionService {
   * to our internal enum. Run on a cron for anything sitting in
   * 'processing' for more than a few minutes.
   */
-  async verifyOrderStatus(tx, force=false) {
+  /**
+  * Async order status verification engine
+  */
+  async verifyOrderStatus(tx, force = false) {
+    // If already in a terminal state (success, canceled, or explicitly marked failed), stop.
     if (!['pending', 'processing', 'partial'].includes(tx.status)) return;
     if (!tx.providerOrderId) return;
 
-    if (tx.verificationAttempts >= 10) {
+    const now = new Date();
+    const createdAt = new Date(tx.createdAt);
+    const hoursSinceCreation = (now - createdAt) / (1000 * 60 * 60);
+
+    // 1. TIMEOUT GUARD: Only fail if the order has been pending/processing for over 72 hours (3 days)
+    if (hoursSinceCreation > 72 && !force) {
       await tx.update({
         status: 'failed',
-        providerStatus: 'max_attempts_exceeded',
-        deliveryMessage: 'Order execution checks exceeded system limits. Please contact support.'
+        providerStatus: 'order_timeout',
+        deliveryMessage: 'Order timed out after 72 hours without completion. Please contact support.'
       });
       return;
     }
 
-    // Cooldown check to prevent hitting provider rate limits
-    // if (tx.lastVerifiedAt && (Date.now() - new Date(tx.lastVerifiedAt)) < 2 * 60 * 1000) {
-    //   return;
-    // }
-    // Only apply the rate limit block if it is NOT a forced check
-    if (!force && tx.lastVerifiedAt && (Date.now() - new Date(tx.lastVerifiedAt)) < 2 * 60 * 1000) {
+    // 2. DYNAMIC COOLDOWN (Backoff Strategy)
+    // - First 10 attempts: check every 2 minutes
+    // - 10-30 attempts: check every 15 minutes
+    // - 30+ attempts: check every 1 hour
+    let cooldownMinutes = 2;
+    if (tx.verificationAttempts >= 30) {
+      cooldownMinutes = 60;
+    } else if (tx.verificationAttempts >= 10) {
+      cooldownMinutes = 15;
+    }
+
+    const lastVerified = tx.lastVerifiedAt ? new Date(tx.lastVerifiedAt) : 0;
+    const minutesSinceLastCheck = (now - lastVerified) / (1000 * 60);
+
+    // Skip if we are still within the cooldown window (unless forced manually)
+    if (!force && minutesSinceLastCheck < cooldownMinutes) {
       return;
     }
 
     try {
       const resData = await providerService.dispatch("owlet", "status", tx.providerOrderId);
-      const now = new Date();
 
-      // Owlet's standard status strings: Pending, In progress, Completed,
-      // Partial, Processing, Canceled — map to our internal set.
+      // Owlet's standard status strings mapped to internal set
       const statusMap = {
         'completed': 'success',
         'partial': 'partial',
         'canceled': 'canceled',
         'cancelled': 'canceled',
+        'failed': 'failed',
         'in progress': 'processing',
         'processing': 'processing',
         'pending': 'pending',
       };
 
-      const mappedStatus = statusMap[resData?.status?.toLowerCase()] || 'processing';
+      const rawStatus = resData?.status?.toLowerCase() || '';
+      const mappedStatus = statusMap[rawStatus] || 'processing';
 
-      // Handle critical status changes atomically using managed database transactions
-      if (mappedStatus === 'canceled' && !tx.isRefunded) {
+      // Handle Canceled / Refundable terminal states
+      if ((mappedStatus === 'canceled' || mappedStatus === 'failed') && !tx.isRefunded) {
         await sequelize.transaction(async (t) => {
-          // Re-fetch and lock the target transaction row and wallet atomically
           const lockedTx = await SmmTransaction.findByPk(tx.id, { lock: t.LOCK.UPDATE, transaction: t });
 
-          if (lockedTx.isRefunded || lockedTx.status === 'canceled') return; // Guard against concurrent execution updates
+          if (lockedTx.isRefunded || lockedTx.status === 'canceled' || lockedTx.status === 'failed') return;
 
           const wallet = await Wallet.findOne({
             where: { userId: lockedTx.userId },
@@ -168,20 +186,20 @@ class SmmTransactionService {
             const postRefundBalance = Number((Number(wallet.vtuBalance) + Number(lockedTx.sellingPrice)).toFixed(4));
 
             await lockedTx.update({
-              status: 'canceled',
-              providerStatus: resData?.status,
+              status: mappedStatus,
+              providerStatus: resData?.status || rawStatus,
               startCount: resData?.start_count ? parseInt(resData.start_count, 10) : lockedTx.startCount,
               remains: resData?.remains !== undefined ? parseInt(resData.remains, 10) : lockedTx.remains,
               verificationAttempts: lockedTx.verificationAttempts + 1,
               lastVerifiedAt: now,
               isRefunded: true,
               finalBalance: postRefundBalance,
-              deliveryMessage: "Order was canceled by provider — automatically refunded to wallet."
+              deliveryMessage: `Order was ${mappedStatus} by provider — automatically refunded to wallet.`
             }, { transaction: t });
           }
         });
       } else {
-        // Non-refund state updates can safely execute normally
+        // Regular status update (In progress, Partial, or Completed)
         const updates = {
           status: mappedStatus,
           providerStatus: resData?.status,
@@ -192,7 +210,11 @@ class SmmTransactionService {
         };
 
         if (mappedStatus === 'success') {
-          updates.deliveryMessage = `Delivered successfully — ${resData?.remains ?? 0} remaining of ${tx.quantity} requested.`;
+          updates.deliveryMessage = "Completed. You can repeat this setup.";
+        } else if (mappedStatus === 'partial') {
+          updates.deliveryMessage = `Partially completed — ${resData?.remains ?? 0} remaining of ${tx.quantity} requested.`;
+        } else if (mappedStatus === 'processing') {
+          updates.deliveryMessage = "Order placed successfully and is in progress. Do not place another order for this link until this is completed.";
         }
 
         await tx.update(updates);
@@ -201,10 +223,11 @@ class SmmTransactionService {
       console.error(`SMM status check failed for TX ${tx.id}:`, err.message);
       await tx.update({
         verificationAttempts: tx.verificationAttempts + 1,
-        lastVerifiedAt: new Date(),
+        lastVerifiedAt: now,
       });
     }
   }
+
 
   async getResponsePayload(txId) {
     const refreshed = await SmmTransaction.findByPk(txId);
@@ -215,15 +238,15 @@ class SmmTransactionService {
       platform: refreshed.platform,
       link: refreshed.link,
       quantity: refreshed.quantity,
-      costPrice:refreshed.costPrice,
+      costPrice: refreshed.costPrice,
       sellingPrice: refreshed.sellingPrice,
       amount: refreshed.sellingPrice,
-      initialBalance:refreshed.initialBalance,
-      finalBalance:refreshed.finalBalance,
-      profit:refreshed.profit,
+      initialBalance: refreshed.initialBalance,
+      finalBalance: refreshed.finalBalance,
+      profit: refreshed.profit,
       status: refreshed.status,
       providerStatus: refreshed.providerStatus,
-      providerOrderId:refreshed.providerOrderId,
+      providerOrderId: refreshed.providerOrderId,
       deliveryMessage: refreshed.deliveryMessage,
       remains: refreshed.remains,
       createdAt: refreshed.createdAt,

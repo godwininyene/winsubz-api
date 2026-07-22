@@ -277,7 +277,39 @@ exports.checkSmmOrderStatus = catchAsync(async (req, res, next) => {
 
 
 /**
- * 4. Fetch historical SMM ledger activity records with full multi-role capability
+ * 4. Admin endpoint: Force refund a stuck order
+ */
+exports.adminRefundOrder = catchAsync(async (req, res, next) => {
+  const { orderId } = req.params;
+  const { reason } = req.body;
+
+  const tx = await smmTransactionService.adminForceRefund(orderId, reason);
+
+  res.status(200).json({
+    status: "success",
+    message: "Order refunded successfully",
+    data: { transaction: tx }
+  });
+});
+
+/**
+ *5. Admin endpoint: Force complete a stuck order
+ */
+exports.adminCompleteOrder = catchAsync(async (req, res, next) => {
+  const { orderId } = req.params;
+  const { note } = req.body;
+
+  const tx = await smmTransactionService.adminForceComplete(orderId, note);
+
+  res.status(200).json({
+    status: "success",
+    message: "Order status updated to completed",
+    data: { transaction: tx }
+  });
+});
+
+/**
+ * 6. Fetch historical SMM ledger activity records with full multi-role capability
  */
 exports.getAllSmmTransactions = catchAsync(async (req, res, next) => {
   const features = new APIFeatures(req.query, "SmmTransaction")

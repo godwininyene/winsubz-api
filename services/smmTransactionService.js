@@ -99,18 +99,8 @@ class SmmTransactionService {
   }
 
   /**
-   * Cron-driven Async order status verification sync engine
+   * Async order status verification engine
    */
-
-  /**
-  * Owlet orders are async — unlike VTU data/airtime, they don't
-  * resolve in seconds. This checks status and maps Owlet's terms
-  * to our internal enum. Run on a cron for anything sitting in
-  * 'processing' for more than a few minutes.
-  */
-  /**
-  * Async order status verification engine
-  */
   async verifyOrderStatus(tx, force = false) {
     // If already in a terminal state (success, canceled, or explicitly marked failed), stop.
     if (!['pending', 'processing', 'partial'].includes(tx.status)) return;
@@ -120,12 +110,13 @@ class SmmTransactionService {
     const createdAt = new Date(tx.createdAt);
     const hoursSinceCreation = (now - createdAt) / (1000 * 60 * 60);
 
-    // 1. TIMEOUT GUARD: Only fail if the order has been pending/processing for over 72 hours (3 days)
+    // 1. TIMEOUT GUARD (72+ Hours / 3 days): Flag for Admin Review WITHOUT auto-refunding
+    // This prevents double-loss if provider delivers the order later and debits our provider balance.
     if (hoursSinceCreation > 72 && !force) {
       await tx.update({
-        status: 'failed',
-        providerStatus: 'order_timeout',
-        deliveryMessage: 'Order timed out after 72 hours without completion. Please contact support.'
+        status: 'processing', // Keep status active so manual checks still work
+        providerStatus: 'stuck_in_provider_queue',
+        deliveryMessage: 'Order execution is taking longer than expected at the provider. Our team is verifying this with support.'
       });
       return;
     }
@@ -136,9 +127,9 @@ class SmmTransactionService {
     // - 30+ attempts: check every 1 hour
     let cooldownMinutes = 2;
     if (tx.verificationAttempts >= 30) {
-      cooldownMinutes = 60;
+      cooldownMinutes = 60; // Check hourly after 30 attempts
     } else if (tx.verificationAttempts >= 10) {
-      cooldownMinutes = 15;
+      cooldownMinutes = 15; // Check every 15 min after 10 attempts
     }
 
     const lastVerified = tx.lastVerifiedAt ? new Date(tx.lastVerifiedAt) : 0;
@@ -158,7 +149,7 @@ class SmmTransactionService {
         'partial': 'partial',
         'canceled': 'canceled',
         'cancelled': 'canceled',
-        'failed': 'failed',
+        'failed': 'canceled', // Treat provider failures as canceled for refunding
         'in progress': 'processing',
         'processing': 'processing',
         'pending': 'pending',
@@ -181,6 +172,7 @@ class SmmTransactionService {
           });
 
           if (wallet) {
+            // Safe to refund here because provider confirmed they canceled and won't charge us
             await this.processRefund(lockedTx, wallet, lockedTx.sellingPrice, t);
 
             const postRefundBalance = Number((Number(wallet.vtuBalance) + Number(lockedTx.sellingPrice)).toFixed(4));
@@ -228,6 +220,81 @@ class SmmTransactionService {
     }
   }
 
+  /**
+   * Admin Force-Refund Method
+   * Use when an order is canceled on Owlet's dashboard but API won't sync.
+   */
+  async adminForceRefund(txId, adminReason = "Canceled and refunded by admin") {
+    return await sequelize.transaction(async (t) => {
+      const tx = await SmmTransaction.findByPk(txId, { lock: t.LOCK.UPDATE, transaction: t });
+
+      if (!tx) {
+        const err = new Error("Transaction not found");
+        err.statusCode = 404;
+        throw err;
+      }
+
+      if (tx.isRefunded || tx.status === 'canceled') {
+        const err = new Error("Transaction is already refunded or canceled");
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const wallet = await Wallet.findOne({
+        where: { userId: tx.userId },
+        lock: t.LOCK.UPDATE,
+        transaction: t
+      });
+
+      if (!wallet) {
+        const err = new Error("User wallet not found");
+        err.statusCode = 404;
+        throw err;
+      }
+
+      // Execute refund
+      await this.processRefund(tx, wallet, tx.sellingPrice, t);
+      const postRefundBalance = Number((Number(wallet.vtuBalance) + Number(tx.sellingPrice)).toFixed(4));
+
+      await tx.update({
+        status: 'canceled',
+        providerStatus: 'manually_refunded_by_admin',
+        isRefunded: true,
+        finalBalance: postRefundBalance,
+        deliveryMessage: `Order canceled by admin — ${adminReason}`
+      }, { transaction: t });
+
+      return tx;
+    });
+  }
+
+  /**
+   * Admin Force-Complete Method
+   * Use when an order completed on Owlet's dashboard but API won't sync.
+   */
+  async adminForceComplete(txId, adminNote = "Marked completed by admin") {
+    const tx = await SmmTransaction.findByPk(txId);
+    if (!tx) {
+      const err = new Error("Transaction not found");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (tx.status === 'success') {
+      const err = new Error("Transaction is already marked completed");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    await tx.update({
+      status: 'success',
+      providerStatus: 'manually_completed_by_admin',
+      remains: 0,
+      deliveryMessage: `Completed. ${adminNote}`
+    });
+
+    return tx;
+  }
 
   async getResponsePayload(txId) {
     const refreshed = await SmmTransaction.findByPk(txId);

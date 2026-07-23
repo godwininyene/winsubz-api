@@ -21,5 +21,6 @@ router
 router
   .route("/admin/charts")
   .get(statsController.getAdminChartData);
+router.get("/admin/vtu", statsController.getAdminVtuStats);
 
 module.exports = router;

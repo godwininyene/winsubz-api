@@ -433,6 +433,204 @@ exports.getAdminChartData = catchAsync(async (req, res, next) => {
 
 
 /**
+ * Helper function to calculate date ranges for current and previous periods
+ */
+const getDateRanges = (period) => {
+  const now = new Date();
+  let currentStart, currentEnd, prevStart, prevEnd;
+
+  switch (period.toLowerCase()) {
+    case "today": {
+      currentStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      currentEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+      // Previous period = Yesterday
+      prevStart = new Date(currentStart);
+      prevStart.setDate(prevStart.getDate() - 1);
+      prevEnd = new Date(currentStart);
+      prevEnd.setMilliseconds(-1);
+      break;
+    }
+    case "7days": {
+      currentEnd = new Date(now);
+      currentStart = new Date(now);
+      currentStart.setDate(now.getDate() - 7);
+      currentStart.setHours(0, 0, 0, 0);
+
+      // Previous period = 7 to 14 days ago
+      prevEnd = new Date(currentStart);
+      prevEnd.setMilliseconds(-1);
+      prevStart = new Date(currentStart);
+      prevStart.setDate(prevStart.getDate() - 7);
+      break;
+    }
+    case "30days": {
+      currentEnd = new Date(now);
+      currentStart = new Date(now);
+      currentStart.setDate(now.getDate() - 30);
+      currentStart.setHours(0, 0, 0, 0);
+
+      // Previous period = 30 to 60 days ago
+      prevEnd = new Date(currentStart);
+      prevEnd.setMilliseconds(-1);
+      prevStart = new Date(currentStart);
+      prevStart.setDate(prevStart.getDate() - 30);
+      break;
+    }
+    case "alltime":
+    default:
+      currentStart = null;
+      currentEnd = null;
+      prevStart = null;
+      prevEnd = null;
+      break;
+  }
+
+  return { currentStart, currentEnd, prevStart, prevEnd };
+};
+
+/**
+ * Helper function to fetch stats for a given date range
+ */
+const fetchStatsForRange = async (startDate, endDate, Op, fn, col, literal, VTUTransaction) => {
+  const dateFilter = startDate && endDate ? { [Op.between]: [startDate, endDate] } : undefined;
+
+  // 1. Calculate Successful Volume & Profit
+  const successWhere = { status: "success" };
+  if (dateFilter) successWhere.createdAt = dateFilter;
+
+  const successStats = await VTUTransaction.findOne({
+    attributes: [
+      [fn("COALESCE", fn("SUM", col("sellingPrice")), 0), "volume"],
+      [fn("COALESCE", fn("SUM", literal("`sellingPrice` - `amountPaid`")), 0), "profit"],
+    ],
+    where: successWhere,
+    raw: true,
+  });
+
+  // 2. Count statuses (total, successful, failed, reversed)
+  const statusWhere = {};
+  if (dateFilter) statusWhere.createdAt = dateFilter;
+
+  const statusCounts = await VTUTransaction.findAll({
+    attributes: ["status", [fn("COUNT", col("id")), "count"]],
+    where: statusWhere,
+    group: ["status"],
+    raw: true,
+  });
+
+  let total = 0;
+  let successful = 0;
+  let failed = 0;
+  let reversed = 0;
+
+  statusCounts.forEach((item) => {
+    const count = Number(item.count || 0);
+    total += count;
+
+    const status = item.status ? item.status.toLowerCase() : "";
+    if (status === "success" || status === "successful") successful += count;
+    else if (status === "failed") failed += count;
+    else if (status === "reversed" || status === "refunded") reversed += count;
+  });
+
+  const volume = Number(successStats?.volume || 0);
+  const profit = Number(successStats?.profit || 0);
+
+  // Derived KPIs
+  const successRate = total > 0 ? Number(((successful / total) * 100).toFixed(1)) : 0;
+  const avgTransactionValue = successful > 0 ? Number((volume / successful).toFixed(2)) : 0;
+  const avgProfitPerTransaction = successful > 0 ? Number((profit / successful).toFixed(2)) : 0;
+
+  return {
+    volume,
+    profit,
+    total,
+    successful,
+    failed,
+    reversed,
+    successRate,
+    avgTransactionValue,
+    avgProfitPerTransaction,
+  };
+};
+
+/**
+ * Calculate percentage change: ((current - previous) / previous) * 100
+ */
+/**
+ * Calculate percentage change formatted as a string (+18.5% or -5.2%)
+ */
+const calcPercentageChange = (current, previous) => {
+  if (previous === undefined || previous === null) return null;
+  if (previous === 0) {
+    if (current > 0) return "+100%";
+    return "0%";
+  }
+
+  const change = ((current - previous) / previous) * 100;
+  const formatted = change.toFixed(1);
+
+  return change > 0 ? `+${formatted}%` : `${formatted}%`;
+};
+
+/**
+ * For percentage point differences (like Success Rate change)
+ */
+const calcPointDifference = (current, previous) => {
+  if (previous === undefined || previous === null) return null;
+  const diff = Number((current - previous).toFixed(1));
+  return diff > 0 ? `+${diff}%` : `${diff}%`;
+};
+exports.getAdminVtuStats = catchAsync(async (req, res, next) => {
+  const { period = "today" } = req.query;
+
+  const { currentStart, currentEnd, prevStart, prevEnd } = getDateRanges(period);
+
+  // Fetch current period stats
+  const currentStats = await fetchStatsForRange(
+    currentStart,
+    currentEnd,
+    Op,
+    fn,
+    col,
+    literal,
+    VTUTransaction
+  );
+
+  // If period is not "alltime", calculate comparison with previous period
+  let comparison = null;
+
+  if (period.toLowerCase() !== "alltime" && prevStart && prevEnd) {
+    const prevStats = await fetchStatsForRange(
+      prevStart,
+      prevEnd,
+      Op,
+      fn,
+      col,
+      literal,
+      VTUTransaction
+    );
+
+    comparison = {
+      volumeChange: calcPercentageChange(currentStats.volume, prevStats.volume),
+      profitChange: calcPercentageChange(currentStats.profit, prevStats.profit),
+      totalTransactionsChange: calcPercentageChange(currentStats.total, prevStats.total),
+      successfulChange: calcPercentageChange(currentStats.successful, prevStats.successful),
+      successRateChange: calcPointDifference(currentStats.successRate, prevStats.successRate),
+    };
+  }
+
+  res.status(200).json({
+    status: "success",
+    data: {
+      metrics: currentStats,
+      comparison, // Null for 'alltime', object containing percentage changes otherwise
+    },
+  });
+});
+
+/**
  * =========================================================
  * Get Leaderboard (Top Customers)
  * Supports filter: week | month | year (default: month)
